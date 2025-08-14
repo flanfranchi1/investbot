@@ -209,3 +209,4 @@ __marimo__/
 #pyenv version control
 .python-version
 envlib_requirements.txt
+data/*
