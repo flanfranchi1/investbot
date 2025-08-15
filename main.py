@@ -6,7 +6,7 @@ import sqlalchemy as db
 import time
 from dotenv import load_dotenv
 from sourcing import get_sp500_tickers
-from database import get_engine, create_price_table
+from database import get_engine, create_price_table, create_sp500_table
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 logging.basicConfig(
@@ -62,7 +62,6 @@ def save_data_to_db(data: dict, ticker: str, engine: db.Engine) -> None:
         """
 
         try:
-            # The .execute() method is part of the connection object
             connection.execute(insert_query, (
                 ticker,
                 price_date,
@@ -73,11 +72,10 @@ def save_data_to_db(data: dict, ticker: str, engine: db.Engine) -> None:
                 int(values['5. volume'])
             ))
         except IntegrityError:
-            # This will happen if we try to insert a duplicate ticker/date, which is fine.
-            # print(f"Data for {ticker} on {price_date} already exists. Skipping.")
-            pass  # Just ignore duplicates
+            pass
         except Exception as e:
-            print(f"Error inserting data for {ticker} on {price_date}: {e}")
+            logging.error(
+                f"Error saving data for {ticker} on {date_str}: {e} ({e})")
 
     connection.close()
     print(f"Successfully saved data for {ticker}.")
@@ -87,17 +85,18 @@ def save_data_to_db(data: dict, ticker: str, engine: db.Engine) -> None:
 if __name__ == "__main__":
     db_engine = get_engine()
     create_price_table(db_engine)
+    create_sp500_table(db_engine)
     sp500_data = get_sp500_tickers(SP_500_URL)
     if sp500_data:
+        logging.info(f"Fetched {len(sp500_data)} S&P 500 tickers.")
         all_tickers = sp500_data
         tickers_to_fetch = all_tickers[:15]
         for ticker in tickers_to_fetch:
-            print(f"--- Processing {ticker} ---")
-            price_data = fetch_daily_data(ticker)
+            logging.info(f"Fetching data for {ticker}...")
             price_data = fetch_daily_data(ticker)
             if price_data and 'Time Series (Daily)' in price_data:
                 daily_data = price_data['Time Series (Daily)']
                 save_data_to_db(daily_data, ticker, db_engine)
             else:
-                print(f"No valid data found for {ticker}.")
+                logging.error(f"Failed to fetch data for {ticker}. Skipping...")
             time.sleep(1)
