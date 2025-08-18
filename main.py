@@ -9,6 +9,7 @@ from sourcing import get_sp500_tickers
 from database import get_engine, create_price_table, create_sp500_table
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime
+
 logging.basicConfig(
     level=logging.INFO,
     # The format of the log message
@@ -34,7 +35,7 @@ def fetch_daily_data(ticker: str) -> dict:
 
     try:
         response = requests.get(URL)
-        response.raise_for_status()  # Raises an exception for bad responses (4xx or 5xx)
+        response.raise_for_status()
         data = response.json()
 
         # Check for API-specific error messages
