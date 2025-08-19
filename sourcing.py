@@ -1,31 +1,61 @@
 # *-* coding: utf-8 *-*
 
-from bs4 import BeautifulSoup
-import requests
+import logging
 import pandas as pd
-from utils.string_utils import trim_string
+import requests
+from typing import Any
 
-def get_sp500_comppanies_data(sp500_source:str) -> pd.DataFrame:
-    """Fetches S&P 500 companies data from the given URL and returns it as a DataFrame."""
-    response = requests.get(sp500_source)
-    soup = BeautifulSoup(response.text, 'lxml')
-    table = soup.find('table', {'id': 'constituents'})
-    raw_header = (table
-                  .tr
-                  .text
-                  )
-    header = [col for col in raw_header.split('\n') if len(col) > 0]
-    data = {h: [] for h in header}
-    rows = table.find_all('tr')[1:]
-    for row in rows:
-        cols = row.find_all('td')
-        for h, col in zip(header, cols):
-            col_text = col.text.strip()
-            data[h].append(None if len(col_text) < 1 else col_text)
-    df = pd.DataFrame(data)
+def get_sp500_companies_data(url_or_body: any) -> pd.DataFrame:
+    """
+    Fetches S&P 500 companies data from a URL and returns it as a DataFrame."""
+    df = pd.read_html(url_or_body, header=0, flavor='bs4')[0]
+    logging.info(
+        "Successfully fetched and parsed S&P 500 table from Wikipedia.")
+    renamed_cols = map(
+        lambda col: col.lower().replace(' ', '_').replace('-', '_'),
+        df
+        .columns
+        .to_list()
+    )
+    df.columns = renamed_cols
+    df['registry_date'] = pd.to_datetime('today').date()
     return df
 
-def get_sp500_tickers(url: str) -> list:
-    """Fetches S&P 500 tickers from the given URL and returns a list of ticker symbols."""
-    df = get_sp500_comppanies_data(url)
-    return df['Symbol'].tolist()
+
+def get_sp500_tickers(df: pd.DataFrame) -> list:
+    """extracts and returns a list of S&P 500 ticker symbols from the DataFrame."""
+    return df['symbol'].tolist()
+
+def save_sp500_companies_to_db(df: pd.DataFrame, engine: Any) -> None:
+    """
+    Saves the S&P 500 companies DataFrame to the database.
+    If the table already exists, it will be replaced.
+    """
+    df.to_sql('sp500_companies', con=engine, if_exists='replace', index=False)
+    logging.info("S&P 500 companies data saved to database.")
+
+def fetch_daily_data(ticker: str, api_key:str) -> dict:
+    """Fetches daily time series data for a given stock ticker."""
+
+    
+    URL = (f'https://www.alphavantage.co/query?function=TIME_SERIES_DAILY'
+           f'&symbol={ticker}'
+           f'&apikey={api_key}'
+           f'&outputsize=full')
+
+    try:
+        response = requests.get(URL)
+        response.raise_for_status()
+        data = response.json()
+
+        # Check for API-specific error messages
+        if "Error Message" in data or 'Time Series (Daily)' not in data:
+            logging.warning(
+                f"API issue for {ticker}: {data.get('Note', data)}")
+            return None
+        return data
+
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Network error fetching {ticker}: {e}")
+        return None
+
