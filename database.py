@@ -36,13 +36,13 @@ def create_price_table(engine: db.Engine) -> None:
     db.Table('stock_prices', metadata,
              db.Column('id', db.Integer, primary_key=True),
              db.Column('ticker', db.String(10), nullable=False),
-             db.Column('price_date', db.Date, nullable=False),
+             db.Column('date', db.Date, nullable=False),
              db.Column('open', db.Float, nullable=False),
              db.Column('high', db.Float, nullable=False),
              db.Column('low', db.Float, nullable=False),
              db.Column('close', db.Float, nullable=False),
              db.Column('volume', db.Integer, nullable=False),
-             db.UniqueConstraint('ticker', 'price_date',
+             db.UniqueConstraint('ticker', 'date',
                                  name='uix_ticker_date')
              )
 

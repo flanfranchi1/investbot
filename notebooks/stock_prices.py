@@ -19,18 +19,33 @@ def _():
 
 @app.cell
 def _():
-    from sourcing import get_sp500_comppanies_data
-    from main import SP_500_URL
-    COMPANIES = get_sp500_comppanies_data(SP_500_URL)
-    print(COMPANIES)
-    return (COMPANIES,)
+    from database import get_engine
+    import pandas as pd
+
+    engine = get_engine()
+    stock_prices_df = pd.read_sql(
+        sql="SELECT * FROM STOCK_PRICES;",
+        con=engine,
+        parse_dates=['date']
+    )
+
+    print(stock_prices_df)
+
+    return (stock_prices_df,)
 
 
 @app.cell
-def _(COMPANIES):
-    from database import get_engine
-    engine = get_engine()
-    COMPANIES.to_sql(name='sp500_companies', con=engine,if_exists='replace')
+def _():
+    return
+
+
+@app.cell
+def _(stock_prices_df):
+    print(
+        stock_prices_df
+        ['ticker']
+        .value_counts()
+    )
     return
 
 

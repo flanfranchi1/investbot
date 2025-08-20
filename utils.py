@@ -3,6 +3,7 @@
 import json
 import logging
 import requests
+from datetime import datetime, timedelta
 
 from pathlib import Path
 
@@ -28,3 +29,16 @@ def save_as_json(data: dict, ticker: str, path: str) -> None:
         logging.info(f"Data for {ticker} saved to {file_path}.")
     except Exception as e:
         logging.error(f"Error saving data for {ticker}: {e}")
+
+def date_range(months: int, delay:int=0) -> tuple:
+    """Returns start and end dates for the given number of months."""
+    end_date = datetime.now() + timedelta(days=delay)
+    start_date = end_date - timedelta(days=30 * months)
+    return start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')
+
+snake_case = lambda s: (
+    s.lower()
+    .replace(' ', '_')
+    .replace('-', '_')
+    .replace('.', '')
+) 

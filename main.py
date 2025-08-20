@@ -5,15 +5,16 @@ import logging
 import os
 import pandas as pd
 from pathlib import Path
+from ipdb import set_trace
 import sqlalchemy as db
 import time
 from dotenv import load_dotenv
-from sourcing import get_sp500_tickers, get_sp500_companies_data, fetch_daily_data
+from data_sourcing import get_sp500_tickers, get_sp500_companies_data, fetch_historical_data
 from database import get_engine, create_price_table, create_sp500_table
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 from pathlib import Path
-from utils import filter_out_files, save_as_json
+from utils import date_range, snake_case
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,19 +35,31 @@ SQLITE_DIR = BASE_DIR / 'data' / 'sqlite'
 
 # --- Main execution block ---
 if __name__ == "__main__":
+    start_date, end_date = date_range(months=12, delay=-1) 
     db_engine = get_engine()
     create_price_table(db_engine)
     create_sp500_table(db_engine)
     sp500_data = get_sp500_tickers(get_sp500_companies_data(SP_500_URL))
     if sp500_data:
         logging.info(f"Fetched {len(sp500_data)} S&P 500 tickers.")
-        tickers_to_fetch = filter_out_files(RAW_DATA_DIR, sp500_data)
-        for ticker in tickers_to_fetch:
+        for ticker in sp500_data:
             logging.info(f"Fetching data for {ticker}...")
-            price_data = fetch_daily_data(ticker, API_KEY)
-            if price_data and 'Time Series (Daily)' in price_data:
-                daily_data = price_data['Time Series (Daily)']
-                save_as_json(price_data, ticker, RAW_DATA_DIR)
-            else:
-                logging.error(f"Failed to fetch data for {ticker}. Skipping...")
-            time.sleep(1)
+            price_data_df = fetch_historical_data(
+                ticker,
+                start_date,
+                end_date
+            )
+            if (isinstance(price_data_df, pd.DataFrame) and not price_data_df.empty) or price_data_df is not None:
+                price_data_df['ticker'] = ticker
+                adj_price_data_df = price_data_df.droplevel(axis=1, level=1)
+                adj_columns = map(snake_case, adj_price_data_df.columns)
+                adj_price_data_df.columns = adj_columns
+                try:
+                    adj_price_data_df.to_sql(
+                        'stock_prices',
+                        con=db_engine,
+                        if_exists='append',
+                        index=True
+                    )
+                except Exception as e:
+                    logging.error(f"Failed to fetch data for {ticker}: {e} Skipping...")
