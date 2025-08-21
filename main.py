@@ -1,20 +1,13 @@
 # *-* coding: utf-8 -*-
 
-import config
 import logging
-import os
 import pandas as pd
-from pathlib import Path
-from ipdb import set_trace
-import sqlalchemy as db
-import time
-from dotenv import load_dotenv
 from data_sourcing import get_sp500_tickers, get_sp500_companies_data, fetch_historical_data
 from database import get_engine, create_price_table, create_sp500_table
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime
-from pathlib import Path
 from utils import date_range, snake_case
+from pathlib import Path
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,9 +19,7 @@ logging.basicConfig(
     ]
 )
 
-load_dotenv()
 SP_500_URL = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
-API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY')
 BASE_DIR = Path(__file__).resolve().parent
 RAW_DATA_DIR = BASE_DIR / 'data' / 'raw'
 SQLITE_DIR = BASE_DIR / 'data' / 'sqlite' 
