@@ -41,9 +41,9 @@ def get_sp500_tickers(df: pd.DataFrame) -> list:
         tickers_df[tickers_df['_merge'] == 'left_only']
         .drop(columns=['_merge'])
     )
-    return adj_tickers_df['symbol'].tolist()
+    return tickers_df['symbol'].tolist()
 
-def fetch_historical_data(ticker: str, start_date: str, end_date: str) -> pd.DataFrame | None:
+def fetch_historical_data(ticker: list|str, start_date: str, end_date: str) -> pd.DataFrame | None:
     "Fetches historical stock data from Yahoo Finance."
     try:
         data = yf.download(ticker, start=start_date, end=end_date)

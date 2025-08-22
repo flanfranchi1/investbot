@@ -26,23 +26,30 @@ SQLITE_DIR = BASE_DIR / 'data' / 'sqlite'
 
 # --- Main execution block ---
 if __name__ == "__main__":
-    start_date, end_date = date_range(months=12, delay=-1) 
+    #start_date, end_date = date_range(months=12, delay=-1)
+    start_date='2023-08-25'
+    end_date='2024-08-25'
     db_engine = get_engine()
     create_price_table(db_engine)
     create_sp500_table(db_engine)
     sp500_data = get_sp500_tickers(get_sp500_companies_data(SP_500_URL))
     if sp500_data:
         logging.info(f"Fetched {len(sp500_data)} S&P 500 tickers.")
-        for ticker in sp500_data:
-            logging.info(f"Fetching data for {ticker}...")
+        div_ratio = divmod(len(sp500_data), 10)
+        for n in range(0, len(sp500_data), div_ratio[0]):
+            ticker_batch = sp500_data[n:n + div_ratio[0]]
+            logging.info(f"Fetching data for {', '.join(ticker_batch)}...")
             price_data_df = fetch_historical_data(
-                ticker,
+                ticker_batch,
                 start_date,
                 end_date
             )
             if (isinstance(price_data_df, pd.DataFrame) and not price_data_df.empty) or price_data_df is not None:
-                price_data_df['ticker'] = ticker
-                adj_price_data_df = price_data_df.droplevel(axis=1, level=1)
+                adj_price_data_df = (price_data_df
+                                     .stack(level=1)
+                                     .reset_index()
+                                     .rename(columns={'level_1': 'ticker', 0: 'date'})
+                )
                 adj_columns = map(snake_case, adj_price_data_df.columns)
                 adj_price_data_df.columns = adj_columns
                 try:
@@ -50,7 +57,7 @@ if __name__ == "__main__":
                         'stock_prices',
                         con=db_engine,
                         if_exists='append',
-                        index=True
+                        index=False
                     )
                 except Exception as e:
-                    logging.error(f"Failed to fetch data for {ticker}: {e} Skipping...")
+                    logging.error(f"Failed to fetch data for {ticker_batch}: {e} Skipping...")
