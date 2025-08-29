@@ -4,6 +4,7 @@ import json
 import logging
 import requests
 from datetime import datetime, timedelta
+from typing import Any, List, Iterator
 
 from pathlib import Path
 
@@ -41,4 +42,9 @@ snake_case = lambda s: (
     .replace(' ', '_')
     .replace('-', '_')
     .replace('.', '')
-) 
+)
+
+def chunk_list(data: List[Any], chunk_size: int) -> Iterator[List[Any]]:
+    """Yield successive n-sized chunks from data."""
+    for i in range(0, len(data), chunk_size):
+        yield data[i:i + chunk_size]
