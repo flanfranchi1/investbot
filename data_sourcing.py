@@ -43,16 +43,23 @@ def get_sp500_tickers(df: pd.DataFrame) -> list:
     )
     return adj_tickers_df['symbol'].tolist()
 
+
 def fetch_historical_data(ticker: str, start_date: str, end_date: str) -> pd.DataFrame | None:
     "Fetches historical stock data from Yahoo Finance."
     try:
         data = yf.download(ticker, start=start_date, end=end_date)
 
         if data.empty:
-            logging.warning(f"No data found for {ticker} in the given date range.")
+            logging.warning(
+                f"No data found for {ticker} in the given date range.")
             return None
 
         logging.info(f"Successfully fetched {len(data)} records for {ticker}.")
+        data['ticker'] = ticker
+        adj_price_data_df = data.droplevel(axis=1, level=1)
+        adj_columns = map(snake_case, adj_price_data_df.columns)
+        adj_price_data_df.columns = adj_columns
         return data
     except Exception as e:
-        logging.error(f"An error occurred while fetching data for {ticker}: {e}")
+        logging.error(
+            f"An error occurred while fetching data for {ticker}: {e}")

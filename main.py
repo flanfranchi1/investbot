@@ -22,7 +22,7 @@ logging.basicConfig(
 
 # --- Main execution block ---
 if __name__ == "__main__":
-    start_date, end_date = date_range(months=12, delay=-1)
+    start_date, end_date = date_range(months=12, delay=0)
     db_engine = get_engine()
     create_price_table(db_engine)
     create_sp500_table(db_engine)
@@ -37,12 +37,8 @@ if __name__ == "__main__":
                 end_date
             )
             if (isinstance(price_data_df, pd.DataFrame) and not price_data_df.empty) or price_data_df is not None:
-                price_data_df['ticker'] = ticker
-                adj_price_data_df = price_data_df.droplevel(axis=1, level=1)
-                adj_columns = map(snake_case, adj_price_data_df.columns)
-                adj_price_data_df.columns = adj_columns
                 try:
-                    adj_price_data_df.to_sql(
+                    price_data_df.to_sql(
                         'stock_prices',
                         con=db_engine,
                         if_exists='append',
