@@ -1,5 +1,6 @@
 # *-* coding: utf-8 -*-
 
+import config
 import logging
 import pandas as pd
 from data_sourcing import get_sp500_tickers, get_sp500_companies_data, fetch_historical_data
@@ -19,18 +20,13 @@ logging.basicConfig(
     ]
 )
 
-SP_500_URL = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
-BASE_DIR = Path(__file__).resolve().parent
-RAW_DATA_DIR = BASE_DIR / 'data' / 'raw'
-SQLITE_DIR = BASE_DIR / 'data' / 'sqlite' 
-
 # --- Main execution block ---
 if __name__ == "__main__":
-    start_date, end_date = date_range(months=12, delay=-1) 
+    start_date, end_date = date_range(months=12, delay=-1)
     db_engine = get_engine()
     create_price_table(db_engine)
     create_sp500_table(db_engine)
-    sp500_data = get_sp500_tickers(get_sp500_companies_data(SP_500_URL))
+    sp500_data = get_sp500_tickers(get_sp500_companies_data(config.SP_500_URL))
     if sp500_data:
         logging.info(f"Fetched {len(sp500_data)} S&P 500 tickers.")
         for ticker in sp500_data:
@@ -53,4 +49,5 @@ if __name__ == "__main__":
                         index=True
                     )
                 except Exception as e:
-                    logging.error(f"Failed to fetch data for {ticker}: {e} Skipping...")
+                    logging.error(
+                        f"Failed to fetch data for {ticker}: {e} Skipping...")
