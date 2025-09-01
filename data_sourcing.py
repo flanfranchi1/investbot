@@ -4,24 +4,34 @@ import logging
 import pandas as pd
 import requests
 import yfinance as yf
+from bs4 import BeautifulSoup
 from database import get_engine
 from utils import snake_case
 from typing import Any
 
-def get_sp500_companies_data(url_or_body: any) -> pd.DataFrame:
-    """
-    Fetches S&P 500 companies data from a URL and returns it as a DataFrame."""
-    df = pd.read_html(url_or_body, header=0, flavor='bs4')[0]
-    logging.info(
-        "Successfully fetched and parsed S&P 500 table from Wikipedia.")
-    renamed_cols = map(
-        snake_case,
-        df
-        .columns
-        .to_list()
-    )
-    df.columns = renamed_cols
-    df['registry_date'] = pd.to_datetime('today').date()
+
+def get_sp500_companies_data(sp500_source: str) -> pd.DataFrame:
+    """Fetches S&P 500 companies data from the given URL and returns it as a DataFrame."""
+    headers = {
+        'User-Agent': 'InvestBot/1.0 (https://github.com/flanfranchi1/investbot; felanfranchi@gmail.com)'
+    }
+    response = requests.get(sp500_source, headers=headers)
+    soup = BeautifulSoup(response.text, 'lxml')
+    table = soup.find('table', {'id': 'constituents'})
+    raw_header = (table
+                  .tr
+                  .text
+                  )
+    header = [col for col in raw_header.split('\n') if len(col) > 0]
+    data = {h: [] for h in header}
+    rows = table.find_all('tr')[1:]
+    for row in rows:
+        cols = row.find_all('td')
+        for h, col in zip(header, cols):
+            col_text = col.text.strip()
+            data[h].append(None if len(col_text) < 1 else col_text)
+    df = pd.DataFrame(data)
+    df.columns = map(snake_case, df.columns)
     return df
 
 
@@ -29,7 +39,8 @@ def get_sp500_tickers(df: pd.DataFrame) -> list:
     """extracts and returns a list of S&P 500 ticker symbols from the DataFrame."""
     sql_query_to_avoid_duplicates = "SELECT DISTINCT ticker FROM STOCK_PRICES"
     engine = get_engine()
-    existing_tickers_df = pd.read_sql(sql_query_to_avoid_duplicates, con=engine)
+    existing_tickers_df = pd.read_sql(
+        sql_query_to_avoid_duplicates, con=engine)
     tickers_df = df.merge(
         existing_tickers_df,
         left_on='symbol',
