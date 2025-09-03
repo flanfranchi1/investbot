@@ -2,8 +2,10 @@
 
 import json
 import logging
+import polars as pl
 import requests
-from datetime import datetime, timedelta
+from sqlalchemy import Engine
+from pathlib import Path, PathPosix
 
 from pathlib import Path
 
@@ -41,4 +43,11 @@ snake_case = lambda s: (
     .replace(' ', '_')
     .replace('-', '_')
     .replace('.', '')
-) 
+)
+
+def sql_query_to_dataframe(engine: Engine, query_file: PathPosix) -> pl.DataFrame:
+    """Executes a SQL query from a file and returns the result as a Polars DataFrame."""
+    with Path.read_text(query_file) as query_file:
+        with engine.connect() as connection:
+            df = pl.read_sql(query_file, connection)
+    return df
