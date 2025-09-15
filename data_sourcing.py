@@ -1,52 +1,73 @@
 # *-* coding: utf-8 *-*
 
+import config
 import logging
 import pandas as pd
 import requests
 import yfinance as yf
 from bs4 import BeautifulSoup
-from database import get_engine
+from database import get_engine, load_data_to_db
 from utils import snake_case, parse_wikipedia_table
+from pathlib import Path
 from typing import Any
 
 
 def get_sp500_companies_data(
         sp500_source: str,
-        table_id: str = 'constituents'
+        last_change_date_file: Path,
+        tables_ids: list[str] = ['constituents', 'changes']
 ) -> pd.DataFrame:
     """Fetches S&P 500 companies data from the given URL and returns it as a DataFrame."""
+    (last_change_date_file
+     .parent
+     .mkdir(
+         parents=True,
+         exist_ok=True
+     )
+     )
+    try:
+        last_stored_date = (
+            last_change_date_file
+            .read_text(encoding='utf-8')
+            .strip()
+        )
+    except Exception as e:
+        last_stored_date = ''
+        logging.warning(f"Could not read last modified date file: {e}")
+
     headers = {
-        'User-Agent': 'InvestBot/1.0 (https://github.com/flanfranchi1/investbot; felanfranchi@gmail.com)'
+        'User-Agent': 'InvestBot/1.0 (https://github.com/flanfranchi1/investbot; felanfranchi@gmail.com)',
+        'If-Modified-Since': last_stored_date
     }
     response = requests.get(sp500_source, headers=headers)
-    soup = BeautifulSoup(response.text, 'lxml')
-    table = soup.find('table', {'id': table_id})
-    df = parse_wikipedia_table(table)
-    df.columns = map(snake_case, df.columns)
-    return df
+    if response.status_code == 304:
+        logging.info("No updates to S&P 500 data since last fetch.")
+    elif response.status_code != 200:
+        logging.error(
+            f"Failed to fetch S&P 500 data: HTTP {response.status_code}")
+    else:
+        soup = BeautifulSoup(response.text, 'lxml')
+        last_modified = response.headers.get('Last-Modified', '')
+        try:
+            with last_change_date_file.open('w', encoding='utf-8') as file:
+                file.write(last_modified)
+        except Exception as e:
+            logging.error(
+                f"Could not write last modified date ({last_modified}) to file: {e}")
+        for table_id in tables_ids:
+            table = soup.find('table', {'id': table_id})
+            data = parse_wikipedia_table(table)
+            db_engine = get_engine(config.SQLITE_DB_PATH)
+            table_name = f"sp500_{'companies' if table_id == 'constituents' else 'changes'}"
+            load_data_to_db(
+                data,
+                table_name,
+                db_engine,
+                mode="overwrite"
+            )
 
 
-def get_sp500_tickers(df: pd.DataFrame) -> list:
-    """extracts and returns a list of S&P 500 ticker symbols from the DataFrame."""
-    sql_query_to_avoid_duplicates = "SELECT DISTINCT ticker FROM STOCK_PRICES"
-    engine = get_engine()
-    existing_tickers_df = pd.read_sql(
-        sql_query_to_avoid_duplicates, con=engine)
-    tickers_df = df.merge(
-        existing_tickers_df,
-        left_on='symbol',
-        right_on='ticker',
-        how='left',
-        indicator=True
-    )
-    adj_tickers_df = (
-        tickers_df[tickers_df['_merge'] == 'left_only']
-        .drop(columns=['_merge'])
-    )
-    return adj_tickers_df['symbol'].tolist()
-
-
-def fetch_historical_data(ticker: str, start_date: str, end_date: str) -> pd.DataFrame | None:
+def fetch_historical_data(ticker: str | list[str], start_date: str, end_date: str) -> pd.DataFrame | None:
     "Fetches historical stock data from Yahoo Finance."
     try:
         data = yf.download(ticker, start=start_date, end=end_date)
@@ -57,11 +78,33 @@ def fetch_historical_data(ticker: str, start_date: str, end_date: str) -> pd.Dat
             return None
 
         logging.info(f"Successfully fetched {len(data)} records for {ticker}.")
-        data['ticker'] = ticker
-        adj_price_data_df = data.droplevel(axis=1, level=1)
-        adj_columns = map(snake_case, adj_price_data_df.columns)
-        adj_price_data_df.columns = adj_columns
-        return data
+        adj_data = (data.stack(level=1)
+                    .rename_axis(index=['Date', 'Ticker'])
+                    .reset_index()
+                    )
+        adj_columns = [snake_case(col) for col in adj_data.columns]
+        adj_data.columns = adj_columns
+        return adj_data
     except Exception as e:
         logging.error(
             f"An error occurred while fetching data for {ticker}: {e}")
+
+
+if __name__ == "__main__":
+    import config
+    engine = get_engine(config.SQLITE_DB_PATH)
+    get_sp500_companies_data(
+        config.SP_500_URL,
+        config.LAST_MODIFIED_SP500_DATE_FILE_PATH
+    )
+
+
+def converting_list_of_dicts_to_dataframe(data: list[dict[str, Any]]) -> pd.DataFrame:
+    """Converts a list of dictionaries to a Pandas DataFrame."""
+    if not data:
+        df = pd.DataFrame()
+    else:
+        df = pd.DataFrame(data)
+        df['first_date'] = pd.to_datetime(df['first_date'], errors='coerce')
+        df['last_date'] = pd.to_datetime(df['last_date'], errors='coerce')
+    return df

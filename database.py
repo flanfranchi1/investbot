@@ -3,34 +3,55 @@
 import sqlalchemy as db
 import logging
 from datetime import datetime
-from typing import List, Dict, Set
+from pathlib import Path
 
 
-def get_engine() -> db.Engine:
+def get_engine(relative_path: Path) -> db.Engine:
     """Creates a database engine instance."""
-    engine = db.create_engine('sqlite:///data/sqlite/stock_data.db')
+    string_path = relative_path.as_uri().replace('file', 'sqlite')
+    engine = db.create_engine(f'sqlite:///{relative_path}')
     return engine
 
 
-def create_sp500_table(engine):
+def create_sp500_companies_table(engine):
     """Creates the sp500_companies table if it doesn't exist."""
     metadata = db.MetaData()
 
     db.Table('sp500_companies', metadata,
              db.Column('symbol', db.String(5), primary_key=True),
-             db.Column('security', db.String, nullable=False),
-             db.Column('gics_sector', db.String, nullable=False),
-             db.Column('gics_sub_industry', db.String, nullable=False),
-             db.Column('headquarters_location', db.String, nullable=False),
-             db.Column('data_added', db.Date, nullable=False),
+             db.Column('security', db.String, nullable=True),
+             db.Column('gics_sector', db.String, nullable=True),
+             db.Column('gics_sub_industry', db.String, nullable=True),
+             db.Column('headquarters_location', db.String, nullable=True),
+             db.Column('date_added', db.String, nullable=True),
              db.Column('cik', db.String, nullable=True),
              db.Column('founded', db.Integer, nullable=True),
-             db.Column('registry_date', db.Date, nullable=False),
-             db.UniqueConstraint('symbol', 'data_added',
+             db.Column('registry_date', db.Date, nullable=True),
+             db.UniqueConstraint('symbol', 'date_added',
                                  name='uix_symbol_date')
              )
     metadata.create_all(engine)
     logging.info("Table 'sp500_companies' is ready.")
+
+
+def create_sp500_changes_table(engine):
+    """Creates the sp500_changes table if it doesn't exist."""
+    metadata = db.MetaData()
+
+    db.Table('sp500_changes', metadata,
+             db.Column('id', db.Integer, primary_key=True, autoincrement=True),
+             db.Column('effective_date', db.String(10)),
+             db.Column('added_ticker', db.String(5), nullable=True),
+             db.Column('added_security', db.String, nullable=True),
+             db.Column('removed_ticker', db.String, nullable=True),
+             db.Column('removed_security', db.String, nullable=True),
+             db.Column('data_added', db.Date, nullable=True),
+             db.Column('reason', db.String, nullable=True),
+             db.UniqueConstraint('id', 'removed_ticker',
+                                 name='uix_sdate_tickers')
+             )
+    metadata.create_all(engine)
+    logging.info("Table 'sp500_cohanges' is ready.")
 
 
 def create_price_table(engine: db.Engine) -> None:
@@ -39,13 +60,13 @@ def create_price_table(engine: db.Engine) -> None:
 
     db.Table('stock_prices', metadata,
              db.Column('id', db.Integer, primary_key=True),
-             db.Column('ticker', db.String(10), nullable=False),
-             db.Column('date', db.Date, nullable=False),
-             db.Column('open', db.Float, nullable=False),
-             db.Column('high', db.Float, nullable=False),
-             db.Column('low', db.Float, nullable=False),
-             db.Column('close', db.Float, nullable=False),
-             db.Column('volume', db.Integer, nullable=False),
+             db.Column('ticker', db.String(10), nullable=True),
+             db.Column('date', db.Date, nullable=True),
+             db.Column('open', db.Float, nullable=True),
+             db.Column('high', db.Float, nullable=True),
+             db.Column('low', db.Float, nullable=True),
+             db.Column('close', db.Float, nullable=True),
+             db.Column('volume', db.Integer, nullable=True),
              db.UniqueConstraint('ticker', 'date',
                                  name='uix_ticker_date')
              )
@@ -54,54 +75,53 @@ def create_price_table(engine: db.Engine) -> None:
     logging.info("Table 'stock_prices' is ready.")
 
 
-
-def get_sp500_companies(engine: db.Engine) -> List[str]:
-    """Fetches all records from the sp500_companies table."""
+def load_data_to_db(
+        data: list[dict],
+        table_name: str,
+        engine: db.Engine,
+        mode: str = 'append'
+) -> None:
+    """Loads data into the specified database table."""
+    metadata = db.MetaData()
+    table = db.Table(table_name, metadata, autoload_with=engine)
     with engine.connect() as connection:
-        query = db.text("SELECT * FROM sp500_companies")
-        result = connection.execute(query)
-        companies = [t[1] for t in result.fetchall()]
-    return companies 
+        with connection.begin() as transaction:
+            if mode == 'replace':
+                try:
+                    connection.execute(table.delete())
+                    logging.info(
+                        f"Cleared existing data from '{table_name}' table.")
+                except Exception as e:
+                    transaction.rollback()
+                    logging.error(
+                        f"Error while clearing data from '{table_name}': {e}")
+                    return
+            else:
+                try:
+                    connection.execute(table.insert(), data)
+                    logging.info(
+                        f"Inserted {len(data)} records into '{table_name}' table.")
+                except db.exc.IntegrityError as e:
+                    logging.error(
+                        f"Integrity error while inserting data into '{table_name}': {e}")
+                except Exception as e:
+                    logging.error(
+                        f"Error while inserting data into '{table_name}': {e}")
 
-def find_all_missing_dates(
-    engine: db.Engine,
-    required_dates: List[datetime]
-) -> Dict[str, List[datetime]]:
-    """
-    Identifies all missing dates for every ticker in the stock_prices table.
 
-    Args:
-        engine: The SQLAlchemy engine instance.
-        required_dates: A complete list of market dates (as datetime objects)
-                        that should exist in the database.
-
-    Returns:
-        A dictionary where keys are ticker symbols and values are lists of
-        the missing datetime objects for that ticker.
-    """
-    missing_data_map = {}
-    
-    required_dates_set: Set[datetime.date] = {dt.date() for dt in required_dates}
-
+def get_target_tickers(engine: db.Engine) -> set[str]:
+    """Retrieves existing tickers from the stock_prices table."""
     with engine.connect() as connection:
-        tickers_query = db.text("SELECT DISTINCT ticker FROM stock_prices")
-        tickers = [row[0] for row in connection.execute(tickers_query)]
-
-        for ticker in tickers:
-            dates_query = db.text("SELECT DISTINCT date FROM stock_prices WHERE ticker = :ticker and date != '0000-00-00'")
-            
-            result = connection.execute(dates_query, {"ticker": ticker})
-            
-            # Convert the query results into a set of date objects.
-            existing_dates_set: Set[datetime.date] = set([datetime.strptime(row[0][:10], '%Y-%m-%d').date() for row in result])
-
-            missing_dates_set = required_dates_set - set(existing_dates_set)
-
-            if missing_dates_set:
-                original_datetime_map = {dt.date(): dt for dt in required_dates}
-                missing_datetimes = sorted(
-                    [original_datetime_map[d] for d in missing_dates_set]
-                )
-                missing_data_map[ticker] = missing_datetimes
-
-    return missing_data_map
+        query = db.text("""SELECT
+                        c.symbol as ticker,
+                        COALESCE(MIN(p.date), NULL) as first_date,
+                        COALESCE(MAX(p.date), NULL) as last_date
+                    FROM sp500_companies c LEFT JOIN 
+                        stock_prices p
+                        on (c.symbol=p.ticker)
+                        GROUP BY c.symbol;""")
+        result = (connection.execute(query)
+                  .mappings()
+                  )
+        target = [dict(row) for row in result]
+    return target

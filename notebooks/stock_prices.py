@@ -20,9 +20,10 @@ def _():
 @app.cell
 def _():
     from database import get_engine
+    import config
     import pandas as pd
 
-    engine = get_engine()
+    engine = get_engine(config.SQLITE_DB_PATH)
     stock_prices_df = pd.read_sql(
         sql="SELECT * FROM STOCK_PRICES;",
         con=engine,

@@ -208,5 +208,10 @@ __marimo__/
 
 #pyenv version control
 .python-version
+
+#vscode settings
+.vscode/
+
+#project specific ignores
 envlib_requirements.txt
 data/*

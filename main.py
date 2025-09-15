@@ -3,11 +3,11 @@
 import config
 import logging
 import pandas as pd
-from data_sourcing import get_sp500_tickers, get_sp500_companies_data, fetch_historical_data
-from database import get_engine, create_price_table, create_sp500_table
+from database import *
+from data_sourcing import get_sp500_companies_data, fetch_historical_data, converting_list_of_dicts_to_dataframe
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime
-from utils import date_range, snake_case
+from utils import date_range
 from pathlib import Path
 
 logging.basicConfig(
@@ -19,35 +19,56 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
+    
 
 # --- Main execution block ---
 if __name__ == "__main__":
     start_date, end_date = date_range(months=12, delay=-1)
-    db_engine = get_engine()
+    db_engine = get_engine(config.SQLITE_DB_PATH)
     create_price_table(db_engine)
-    create_sp500_table(db_engine)
-    sp500_data = get_sp500_tickers(get_sp500_companies_data(config.SP_500_URL))
+    create_sp500_companies_table(db_engine)
+    create_sp500_changes_table(db_engine)
+    get_sp500_companies_data(
+        config.SP_500_URL,
+        config.LAST_MODIFIED_SP500_DATE_FILE_PATH,
+        tables_ids=['constituents', 'changes']
+    )
+    sp500_data = get_target_tickers(db_engine)
+    tickers_and_dates_df = converting_list_of_dicts_to_dataframe(sp500_data)
     if sp500_data:
+        tickers_chunk = len(sp500_data ) // 10 if len(sp500_data) > 10 else len(sp500_data)
         logging.info(f"Fetched {len(sp500_data)} S&P 500 tickers.")
-        for ticker in sp500_data:
-            logging.info(f"Fetching data for {ticker}...")
+        df_list = []
+        for chunk in range(0, len(sp500_data), tickers_chunk):
+            tickers = sp500_data[chunk: chunk + tickers_chunk]
+            target_tickers = [item['ticker'] for item in tickers]
+            logging.info(f"Fetching data for {tickers}...")
             price_data_df = fetch_historical_data(
-                ticker,
+                target_tickers,
                 start_date,
                 end_date
             )
-            if (isinstance(price_data_df, pd.DataFrame) and not price_data_df.empty) or price_data_df is not None:
-                price_data_df['ticker'] = ticker
-                adj_price_data_df = price_data_df.droplevel(axis=1, level=1)
-                adj_columns = map(snake_case, adj_price_data_df.columns)
-                adj_price_data_df.columns = adj_columns
-                try:
-                    adj_price_data_df.to_sql(
-                        'stock_prices',
-                        con=db_engine,
-                        if_exists='append',
-                        index=True
-                    )
-                except Exception as e:
-                    logging.error(
-                        f"Failed to fetch data for {ticker}: {e} Skipping...")
+            df_list.append(price_data_df)
+        stacked_chuncks_df = pd.concat(df_list)
+        if (isinstance(stacked_chuncks_df, pd.DataFrame) and not stacked_chuncks_df.empty) or stacked_chuncks_df is not None:
+            tickers_and_dates_to_be_saved_df = (tickers_and_dates_df
+                                                .merge(
+                                                    stacked_chuncks_df,
+                                                    how='left',
+                                                    on='ticker'
+                                                )
+                                                .query('date < first_date or date > last_date')
+                                                .drop(columns=['first_date', 'last_date'])
+            ) 
+            price_dict = tickers_and_dates_to_be_saved_df .to_dict(orient='records')
+            try:
+                load_data_to_db(
+                    price_dict,
+                    'stock_prices',
+                    db_engine,
+                    mode="append"
+                )
+                logging.info(f"Data for {tickers} loaded successfully.")
+            except Exception as e:
+                logging.error(
+                    f"Failed to fetch data for {chunk}: {e} Skipping...")

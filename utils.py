@@ -12,31 +12,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 
-def filter_out_files(path: str, target: list) -> list:
-    """Return a list of all target companies for the current run."""
-    assets_path = Path(path)
-    if not assets_path.exists():
-        logging.error(f"Assets path {path} does not exist.")
-        return target
-
-    asset_files = [f.name for f in assets_path.glob("**/*.json")]
-    logging.info(f"Found {len(asset_files)} asset files in {path}.")
-    return [t for t in target if f"{t}.json" not in asset_files]
-
-
-def save_as_json(data: dict, ticker: str, path: str) -> None:
-    """Saves the fetched data as a JSON file."""
-    try:
-        assets_path = Path(path)
-        assets_path.mkdir(parents=True, exist_ok=True)
-        file_path = assets_path / f"{ticker}.json"
-        with open(file_path, 'w') as f:
-            json.dumps(data, f, indent=4)
-        logging.info(f"Data for {ticker} saved to {file_path}.")
-    except Exception as e:
-        logging.error(f"Error saving data for {ticker}: {e}")
-
-
 def date_range(months: int, delay: int = 0) -> tuple:
     """Returns start and end dates for the given number of months."""
     end_date = datetime.now() + timedelta(days=delay)
@@ -60,7 +35,7 @@ def sql_query_to_dataframe(engine: Engine, query_file: Path) -> pd.DataFrame:
     return df
 
 
-def parse_wikipedia_table(table_element: BeautifulSoup) -> pd.DataFrame:
+def parse_wikipedia_table(table_element: BeautifulSoup) -> dict:
     """
     Parses a Wikipedia table, handling complex headers with rowspan and colspan.
 
@@ -88,7 +63,7 @@ def parse_wikipedia_table(table_element: BeautifulSoup) -> pd.DataFrame:
         while len(header_grid) <= r:
             header_grid.append([])
 
-        cells = row.find_all(['th', 'td'])  # Inclui td para casos raros
+        cells = row.find_all(['th', 'td'])
         for cell in cells:
             c = 0
             while c < len(header_grid[r]) and header_grid[r][c] is not None:
@@ -122,10 +97,22 @@ def parse_wikipedia_table(table_element: BeautifulSoup) -> pd.DataFrame:
         cells = row.find_all('td')
         extracted_data.append([cell.text.strip() for cell in cells])
 
+    adj_final_headers = list(map(snake_case, final_headers))
     if not final_headers:
-        return pd.DataFrame(extracted_data)
+        return list_to_dict(extracted_data, headers=adj_final_headers)
     else:
 
         num_cols = len(final_headers)
         clean_data = [row for row in extracted_data if len(row) == num_cols]
-        return pd.DataFrame(clean_data, columns=final_headers)
+        return list_to_dict(clean_data, adj_final_headers)
+    
+def list_to_dict(data:list[list], headers:list) -> list[dict]:
+    """Converts a list of lists to a list of dictionaries using the provided headers."""
+    dict_list = []
+    for row in data:
+        if len(row) == len(headers):
+            row_dict = {headers[i]: row[i] for i in range(len(headers))}
+            dict_list.append(row_dict)
+        else:
+            logging.warning(f"Row length {len(row)} does not match headers length {len(headers)}. Skipping row: {row}")
+    return dict_list
