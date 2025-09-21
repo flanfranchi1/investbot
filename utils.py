@@ -16,15 +16,11 @@ def date_range(months: int, delay: int = 0) -> tuple:
     """Returns start and end dates for the given number of months."""
     end_date = datetime.now() + timedelta(days=delay)
     start_date = end_date - timedelta(days=30 * months)
-    return start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')
+    return start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
 
 
-def snake_case(s): return (
-    s.lower()
-    .replace(' ', '_')
-    .replace('-', '_')
-    .replace('.', '')
-)
+def snake_case(s):
+    return s.lower().replace(" ", "_").replace("-", "_").replace(".", "")
 
 
 def sql_query_to_dataframe(engine: Engine, query_file: Path) -> pd.DataFrame:
@@ -45,17 +41,17 @@ def parse_wikipedia_table(table_element: BeautifulSoup) -> dict:
     Returns:
         Polars DataFrame containing the table data.
     """
-    all_rows = table_element.find_all('tr')
+    all_rows = table_element.find_all("tr")
     header_rows = []
     data_rows = []
     header_ended = False
     for row in all_rows:
-        is_header_row = len(row.find_all('th')) > 0
+        is_header_row = len(row.find_all("th")) > 0
         if not header_ended and is_header_row:
             header_rows.append(row)
         else:
             header_ended = True
-            if len(row.find_all('td')) > 0:
+            if len(row.find_all("td")) > 0:
                 data_rows.append(row)
 
     header_grid = []
@@ -63,14 +59,14 @@ def parse_wikipedia_table(table_element: BeautifulSoup) -> dict:
         while len(header_grid) <= r:
             header_grid.append([])
 
-        cells = row.find_all(['th', 'td'])
+        cells = row.find_all(["th", "td"])
         for cell in cells:
             c = 0
             while c < len(header_grid[r]) and header_grid[r][c] is not None:
                 c += 1
 
-            rowspan = int(cell.get('rowspan', 1))
-            colspan = int(cell.get('colspan', 1))
+            rowspan = int(cell.get("rowspan", 1))
+            colspan = int(cell.get("colspan", 1))
 
             for i in range(rowspan):
                 for j in range(colspan):
@@ -94,19 +90,19 @@ def parse_wikipedia_table(table_element: BeautifulSoup) -> dict:
 
     extracted_data = []
     for row in data_rows:
-        cells = row.find_all('td')
+        cells = row.find_all("td")
         extracted_data.append([cell.text.strip() for cell in cells])
 
     adj_final_headers = list(map(snake_case, final_headers))
     if not final_headers:
         return list_to_dict(extracted_data, headers=adj_final_headers)
     else:
-
         num_cols = len(final_headers)
         clean_data = [row for row in extracted_data if len(row) == num_cols]
         return list_to_dict(clean_data, adj_final_headers)
-    
-def list_to_dict(data:list[list], headers:list) -> list[dict]:
+
+
+def list_to_dict(data: list[list], headers: list) -> list[dict]:
     """Converts a list of lists to a list of dictionaries using the provided headers."""
     dict_list = []
     for row in data:
@@ -114,5 +110,7 @@ def list_to_dict(data:list[list], headers:list) -> list[dict]:
             row_dict = {headers[i]: row[i] for i in range(len(headers))}
             dict_list.append(row_dict)
         else:
-            logging.warning(f"Row length {len(row)} does not match headers length {len(headers)}. Skipping row: {row}")
+            logging.warning(
+                f"Row length {len(row)} does not match headers length {len(headers)}. Skipping row: {row}"
+            )
     return dict_list

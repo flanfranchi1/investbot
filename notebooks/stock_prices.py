@@ -25,9 +25,7 @@ def _():
 
     engine = get_engine(config.SQLITE_DB_PATH)
     stock_prices_df = pd.read_sql(
-        sql="SELECT * FROM STOCK_PRICES;",
-        con=engine,
-        parse_dates=['date']
+        sql="SELECT * FROM STOCK_PRICES;", con=engine, parse_dates=["date"]
     )
 
     print(stock_prices_df)
@@ -42,11 +40,7 @@ def _():
 
 @app.cell
 def _(stock_prices_df):
-    print(
-        stock_prices_df
-        ['ticker']
-        .value_counts()
-    )
+    print(stock_prices_df["ticker"].value_counts())
     return
 
 
