@@ -114,3 +114,36 @@ def list_to_dict(data: list[list], headers: list) -> list[dict]:
                 f"Row length {len(row)} does not match headers length {len(headers)}. Skipping row: {row}"
             )
     return dict_list
+
+
+def pivoting_dict(data: dict) -> dict:
+    """Pivots a dictionary of lists into a list of dictionaries."""
+    if not data:
+        return []
+    else:
+        keys = data.keys()
+        return [dict(zip(keys, values)) for values in zip(*data.values())]
+
+
+def group_tickers_by_dates_range(tickers_with_dates: list[dict]) -> dict:
+    """Groups tickers by their date ranges."""
+    grouped = {}
+    for item in tickers_with_dates:
+        dates_range = (item["first_missing_date"], item["last_missing_date"])
+        if dates_range not in grouped.keys():
+            grouped[dates_range] = []
+        grouped[dates_range].append(item["ticker"])
+    return grouped
+
+
+def save_dates_range_dict_as_json(data: dict, file_path: Path) -> None:
+    """pivot dictionary and saves to a JSON file."""
+    pivoted_dict = {}
+    for date_range, tickers in data.items():
+        for ticker in tickers:
+            pivoted_dict[ticker] = (
+                [] if ticker not in pivoted_dict.keys() else pivoted_dict[ticker]
+            )
+        pivoted_dict[ticker].append(date_range)
+    with file_path.open("w") as f:
+        json.dump(pivoted_dict, f, indent=4)

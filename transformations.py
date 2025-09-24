@@ -2,12 +2,14 @@
 
 import config
 import polars as pl
-from database import get_engine
+import sqlalchemy as db
+from data_sourcing import get_market_working_days
+from utils import date_range, pivoting_dict
 
 
-def sp500_companies_transformations() -> pl.DataFrame:
+def sp500_companies_transformations(engine: db.Engine) -> pl.DataFrame:
     """Applies transformations to the sp500_companies table data."""
-    engine = get_engine(config.SQLITE_DB_PATH)
+
     df = pl.read_database("SELECT * FROM sp500_companies", engine)
     df = df.select(
         pl.col("symbol").str.strip_chars().alias("ticker"),
@@ -25,9 +27,9 @@ def sp500_companies_transformations() -> pl.DataFrame:
     return df
 
 
-def sp500_changes_transformations() -> pl.DataFrame:
+def sp500_changes_transformations(engine: db.Engine) -> pl.DataFrame:
     """Applies transformations to the sp500_changes table data."""
-    engine = get_engine(config.SQLITE_DB_PATH)
+
     df = pl.read_database("SELECT * FROM sp500_changes", engine)
     df = df.select(
         [
@@ -50,21 +52,19 @@ def sp500_changes_transformations() -> pl.DataFrame:
     return df
 
 
-def stock_prices_transformations() -> pl.DataFrame:
+def stock_prices_transformations(engine: db.Engine) -> pl.DataFrame:
     """Applies transformations to the stock_prices table data."""
-    engine = get_engine(config.SQLITE_DB_PATH)
     df = pl.read_database("SELECT * FROM stock_prices", engine)
     df = df.select(
-        [
-            pl.col("ticker").str.strip_chars().alias("ticker")
-            #     pl.col('date').str.strptime(pl.Date, fmt='%Y-%m-%d', strict=False).alias('date'),
-            #     pl.col('open').cast(pl.Float64).alias('open'),
-            #     pl.col('high').cast(pl.Float64).alias('high'),
-            #     pl.col('low').cast(pl.Float64).alias('low'),
-            #     pl.col('close').cast(pl.Float64).alias('close'),
-            #     pl.col('adj_close').cast(pl.Float64).alias('adj_close'),
-            #     pl.col('volume').cast(pl.Int64).alias('volume')
-        ]
+        pl.col("ticker").str.strip_chars().alias("ticker"),
+        pl.col("date")
+        .str.strptime(pl.Date, format="%Y-%m-%d", strict=False)
+        .alias("date"),
+        pl.col("open").cast(pl.Float64).alias("open"),
+        pl.col("high").cast(pl.Float64).alias("high"),
+        pl.col("low").cast(pl.Float64).alias("low"),
+        pl.col("close").cast(pl.Float64).alias("close"),
+        pl.col("volume").cast(pl.Int64).alias("volume"),
     )
     df = df.drop_nulls(subset=["ticker", "date"])
     df = df.unique(subset=["ticker", "date"])
@@ -144,13 +144,70 @@ def creating_sp500_index_timeline(
     return final_data
 
 
-if __name__ == "__main__":
-    import config
-    from data_sourcing import get_market_working_days
+def catch_missing_prices(
+    prices_df: pl.DataFrame, timeline_df: pl.DataFrame
+) -> pl.DataFrame:
+    """Identifies missing price entries in the stock_prices table."""
+    merged_df = timeline_df.join(
+        prices_df,
+        on=["ticker", "date"],
+        how="left",
+        suffix="_price",
+    )
+    missing_prices_df = (
+        merged_df.filter(pl.col("open").is_null())
+        .select(pl.col("ticker"), pl.col("date"))
+        .sort(["ticker", "date"])
+    )
 
-    engine = get_engine(config.SQLITE_DB_PATH)
-    companies_df = sp500_companies_transformations()
-    changes_df = sp500_changes_transformations()
-    trading_days = pl.from_pandas(get_market_working_days("2023-01-01", "2024-12-31"))
+    missing_prices_df = missing_prices_df.with_columns(
+        (pl.col("date").cast(pl.Int64) - pl.col("date").cast(pl.Int64).shift(1)).alias(
+            "date_diff"
+        ),
+        (
+            (pl.col("ticker") != pl.col("ticker").shift(1))
+            | (
+                pl.col("date").cast(pl.Int64) - pl.col("date").cast(pl.Int64).shift(1)
+                > 1
+            )
+        )
+        .cum_sum()
+        .alias("group_id"),
+    )
+
+    grouped = (
+        missing_prices_df.group_by(["ticker", "group_id"])
+        .agg(
+            [
+                pl.col("date").min().alias("first_missing_date"),
+                pl.col("date").max().alias("last_missing_date"),
+                pl.len().alias("missing_count"),
+            ]
+        )
+        .filter(pl.col("missing_count") > 4)
+        .select(["ticker", "first_missing_date", "last_missing_date"])
+    )
+    return grouped
+
+
+def get_missing_price_ranges(start_date: str, end_date: str, engine=db.Engine) -> dict:
+    """Fetches missing price ranges from the database."""
+
+    companies_df = sp500_companies_transformations(engine=engine)
+    changes_df = sp500_changes_transformations(engine=engine)
+    trading_days = pl.from_pandas(get_market_working_days(start_date, end_date))
     timeline_df = creating_sp500_index_timeline(changes_df, companies_df, trading_days)
-    print(timeline_df)
+    stock_prices = stock_prices_transformations(engine=engine)
+    missing_ranges = (
+        catch_missing_prices(stock_prices, timeline_df)
+        .with_columns(
+            pl.col("first_missing_date")
+            .dt.strftime("%Y-%m-%d")
+            .alias("first_missing_date"),
+            pl.col("last_missing_date")
+            .dt.strftime("%Y-%m-%d")
+            .alias("last_missing_date"),
+        )
+        .to_dict(as_series=False)
+    )
+    return pivoting_dict(missing_ranges)
