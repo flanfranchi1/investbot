@@ -2,14 +2,13 @@
 
 import sqlalchemy as db
 import logging
-from datetime import datetime
+
 from pathlib import Path
 
 
-def get_engine(relative_path: Path) -> db.Engine:
+def get_engine(db_url: Path) -> db.Engine:
     """Creates a database engine instance."""
-    string_path = relative_path.as_uri().replace("file", "sqlite")
-    engine = db.create_engine(f"sqlite:///{relative_path}")
+    engine = db.create_engine(db_url)
     return engine
 
 
@@ -27,7 +26,7 @@ def create_sp500_companies_table(engine):
         db.Column("headquarters_location", db.String, nullable=True),
         db.Column("date_added", db.String, nullable=True),
         db.Column("cik", db.String, nullable=True),
-        db.Column("founded", db.Integer, nullable=True),
+        db.Column("founded", db.String, nullable=True),
         db.Column("registry_date", db.Date, nullable=True),
         db.UniqueConstraint("symbol", "date_added", name="uix_symbol_date"),
     )
@@ -43,12 +42,12 @@ def create_sp500_changes_table(engine):
         "sp500_changes",
         metadata,
         db.Column("id", db.Integer, primary_key=True, autoincrement=True),
-        db.Column("effective_date", db.String(10)),
+        db.Column("effective_date", db.String),
         db.Column("added_ticker", db.String(5), nullable=True),
         db.Column("added_security", db.String, nullable=True),
         db.Column("removed_ticker", db.String, nullable=True),
         db.Column("removed_security", db.String, nullable=True),
-        db.Column("data_added", db.Date, nullable=True),
+        db.Column("date_added", db.Date, nullable=True),
         db.Column("reason", db.String, nullable=True),
         db.UniqueConstraint("id", "removed_ticker", name="uix_sdate_tickers"),
     )

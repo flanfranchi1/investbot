@@ -23,7 +23,7 @@ def _():
     import config
     import pandas as pd
 
-    engine = get_engine(config.SQLITE_DB_PATH)
+    engine = get_engine(config.POSTGRES_URL)
     stock_prices_df = pd.read_sql(
         sql="SELECT * FROM STOCK_PRICES;", con=engine, parse_dates=["date"]
     )

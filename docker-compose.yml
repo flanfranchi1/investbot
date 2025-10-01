@@ -1,0 +1,21 @@
+version: '3.8'
+
+name: investbot
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: investbot_user
+      POSTGRES_PASSWORD: investbot_password
+      POSTGRES_DB: investbot_db
+    ports:
+      - "5432:5432"
+    volumes:
+      # Corrigido o caminho e associado ao volume declarado abaixo
+      - db_data:/var/lib/postgresql/data
+
+# Declaração do volume que estava faltando
+volumes:
+  db_data:

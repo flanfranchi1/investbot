@@ -48,7 +48,7 @@ def get_sp500_companies_data(
         for table_id in tables_ids:
             table = soup.find("table", {"id": table_id})
             data = parse_wikipedia_table(table)
-            db_engine = get_engine(config.SQLITE_DB_PATH)
+            db_engine = get_engine(config.POSTGRES_URL)
             table_name = (
                 f"sp500_{'companies' if table_id == 'constituents' else 'changes'}"
             )

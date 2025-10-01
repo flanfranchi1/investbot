@@ -1,29 +1,32 @@
 # -*- coding: utf-8 -*-
 
-import config
 import polars as pl
 import sqlalchemy as db
 from data_sourcing import get_market_working_days
-from utils import date_range, pivoting_dict
+from utils import pivoting_dict
+import logging
 
 
 def sp500_companies_transformations(engine: db.Engine) -> pl.DataFrame:
     """Applies transformations to the sp500_companies table data."""
 
     df = pl.read_database("SELECT * FROM sp500_companies", engine)
-    df = df.select(
-        pl.col("symbol").str.strip_chars().alias("ticker"),
-        pl.col("security").str.strip_chars().alias("company_name"),
-        pl.col("gics_sector").str.strip_chars().alias("sector"),
-        pl.col("gics_sub_industry").str.strip_chars().alias("sub_industry"),
-        pl.col("headquarters_location").str.strip_chars().alias("headquarters"),
-        pl.col("date_added").str.strip_chars().alias("date_added"),
-        pl.col("cik").str.strip_chars().alias("cik"),
-        pl.col("founded").cast(pl.Int8, strict=False).alias("founded_year"),
-        # pl.col('registry_date').str.strptime(pl.Date,format='%Y-%m-%d', strict=False).alias('registry_date')
-    )
-    df = df.drop_nulls(subset=["ticker"])
-    df = df.unique(subset=["ticker", "date_added"])
+    if df.is_empty:
+        df = df.rename(mapping={"symbol": "ticker"})
+        logging.warning("sp500_companies table is empty.")
+    else:
+        df = df.select(
+            pl.col("symbol").str.strip_chars().alias("ticker"),
+            pl.col("security").str.strip_chars().alias("company_name"),
+            pl.col("gics_sector").str.strip_chars().alias("sector"),
+            pl.col("gics_sub_industry").str.strip_chars().alias("sub_industry"),
+            pl.col("headquarters_location").str.strip_chars().alias("headquarters"),
+            pl.col("date_added").str.strip_chars().alias("date_added"),
+            pl.col("cik").str.strip_chars().alias("cik"),
+            pl.col("founded").cast(pl.Int8, strict=False).alias("founded_year"),
+        )
+        df = df.drop_nulls(subset=["ticker"])
+        df = df.unique(subset=["ticker", "date_added"])
     return df
 
 
@@ -55,19 +58,22 @@ def sp500_changes_transformations(engine: db.Engine) -> pl.DataFrame:
 def stock_prices_transformations(engine: db.Engine) -> pl.DataFrame:
     """Applies transformations to the stock_prices table data."""
     df = pl.read_database("SELECT * FROM stock_prices", engine)
-    df = df.select(
-        pl.col("ticker").str.strip_chars().alias("ticker"),
-        pl.col("date")
-        .str.strptime(pl.Date, format="%Y-%m-%d", strict=False)
-        .alias("date"),
-        pl.col("open").cast(pl.Float64).alias("open"),
-        pl.col("high").cast(pl.Float64).alias("high"),
-        pl.col("low").cast(pl.Float64).alias("low"),
-        pl.col("close").cast(pl.Float64).alias("close"),
-        pl.col("volume").cast(pl.Int64).alias("volume"),
-    )
-    df = df.drop_nulls(subset=["ticker", "date"])
-    df = df.unique(subset=["ticker", "date"])
+    if df.is_empty:
+        logging.warning("stock_prices table is empty.")
+    else:
+        df = df.select(
+            pl.col("ticker").str.strip_chars().alias("ticker"),
+            pl.col("date")
+            .str.strptime(pl.Date, format="%Y-%m-%d", strict=False)
+            .alias("date"),
+            pl.col("open").cast(pl.Float64).alias("open"),
+            pl.col("high").cast(pl.Float64).alias("high"),
+            pl.col("low").cast(pl.Float64).alias("low"),
+            pl.col("close").cast(pl.Float64).alias("close"),
+            pl.col("volume").cast(pl.Int64).alias("volume"),
+        )
+        df = df.drop_nulls(subset=["ticker", "date"])
+        df = df.unique(subset=["ticker", "date"])
     return df
 
 
@@ -75,8 +81,11 @@ def creating_sp500_index_timeline(
     changes_df: pl.DataFrame, companies_df: pl.DataFrame, trading_days: pl.Series
 ) -> pl.DataFrame:
     """Creates a timeline of S&P 500 index changes."""
+    min_date = trading_days.min().date()
+
     tickers = (
-        changes_df.select(pl.col("added_ticker", "removed_ticker", "effective_date"))
+        changes_df.filter(pl.col("effective_date") >= pl.lit(min_date))
+        .select(pl.col("added_ticker", "removed_ticker", "effective_date"))
         .unpivot(index="effective_date", on=["added_ticker", "removed_ticker"])
         .select(pl.col("value").alias("ticker"))
         .vstack((companies_df.select(pl.col("ticker"))))
@@ -139,6 +148,7 @@ def creating_sp500_index_timeline(
             & (pl.col("date") < pl.col("removed_date"))
             & (pl.col("ticker").str.len_chars() >= 1)
         )
+        .drop("date")
     )
 
     return final_data
@@ -148,45 +158,53 @@ def catch_missing_prices(
     prices_df: pl.DataFrame, timeline_df: pl.DataFrame
 ) -> pl.DataFrame:
     """Identifies missing price entries in the stock_prices table."""
-    merged_df = timeline_df.join(
-        prices_df,
-        on=["ticker", "date"],
-        how="left",
-        suffix="_price",
-    )
-    missing_prices_df = (
-        merged_df.filter(pl.col("open").is_null())
-        .select(pl.col("ticker"), pl.col("date"))
-        .sort(["ticker", "date"])
-    )
+    if prices_df.is_empty:
+        grouped = timeline_df.group_by("ticker").agg(
+            pl.min("added_date").alias("first_missing_date"),
+            pl.max("removed_date").alias("last_missing_date"),
+        )
 
-    missing_prices_df = missing_prices_df.with_columns(
-        (pl.col("date").cast(pl.Int64) - pl.col("date").cast(pl.Int64).shift(1)).alias(
-            "date_diff"
-        ),
-        (
-            (pl.col("ticker") != pl.col("ticker").shift(1))
-            | (
+    else:
+        merged_df = timeline_df.join(
+            prices_df,
+            on=["ticker", "date"],
+            how="left",
+            suffix="_price",
+        )
+        missing_prices_df = (
+            merged_df.filter(pl.col("open").is_null())
+            .select(pl.col("ticker"), pl.col("date"))
+            .sort(["ticker", "date"])
+        )
+
+        missing_prices_df = missing_prices_df.with_columns(
+            (
                 pl.col("date").cast(pl.Int64) - pl.col("date").cast(pl.Int64).shift(1)
-                > 1
+            ).alias("date_diff"),
+            (
+                (pl.col("ticker") != pl.col("ticker").shift(1))
+                | (
+                    pl.col("date").cast(pl.Int64)
+                    - pl.col("date").cast(pl.Int64).shift(1)
+                    > 1
+                )
             )
+            .cum_sum()
+            .alias("group_id"),
         )
-        .cum_sum()
-        .alias("group_id"),
-    )
 
-    grouped = (
-        missing_prices_df.group_by(["ticker", "group_id"])
-        .agg(
-            [
-                pl.col("date").min().alias("first_missing_date"),
-                pl.col("date").max().alias("last_missing_date"),
-                pl.len().alias("missing_count"),
-            ]
+        grouped = (
+            missing_prices_df.group_by(["ticker", "group_id"])
+            .agg(
+                [
+                    pl.col("date").min().alias("first_missing_date"),
+                    pl.col("date").max().alias("last_missing_date"),
+                    pl.len().alias("missing_count"),
+                ]
+            )
+            .filter(pl.col("missing_count") > 4)
+            .select(["ticker", "first_missing_date", "last_missing_date"])
         )
-        .filter(pl.col("missing_count") > 4)
-        .select(["ticker", "first_missing_date", "last_missing_date"])
-    )
     return grouped
 
 

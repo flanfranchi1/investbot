@@ -3,21 +3,23 @@
 import config
 import logging
 import pandas as pd
-from database import *
+from database import (
+    get_engine,
+    create_price_table,
+    create_sp500_companies_table,
+    create_sp500_changes_table,
+    load_data_to_db,
+)
 from data_sourcing import (
     get_sp500_companies_data,
     fetch_historical_data,
-    converting_list_of_dicts_to_dataframe,
 )
-from sqlalchemy.exc import IntegrityError
-from datetime import datetime
 from utils import (
     date_range,
     group_tickers_by_dates_range,
     save_dates_range_dict_as_json,
 )
 from transformations import get_missing_price_ranges
-from pathlib import Path
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,7 +32,7 @@ logging.basicConfig(
 # --- Main execution block ---
 if __name__ == "__main__":
     start_date, end_date = date_range(months=config.SP500_STOCK_PRICE_RANGE, delay=-1)
-    db_engine = get_engine(config.SQLITE_DB_PATH)
+    db_engine = get_engine(config.POSTGRES_URL)
     create_price_table(db_engine)
     create_sp500_companies_table(db_engine)
     create_sp500_changes_table(db_engine)

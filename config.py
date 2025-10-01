@@ -1,7 +1,11 @@
 # *-- coding: utf-8 --*
 from pathlib import Path
 
+
 SP_500_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+POSTGRES_URL = (
+    "postgresql+psycopg2://investbot_user:investbot_password@localhost/investbot_db"
+)
 BASE_DIR = Path(__file__).resolve().parent
 RAW_DATA_DIR = BASE_DIR / "data" / "raw"
 missing_dates_json_path = RAW_DATA_DIR / "missing_dates.json"
