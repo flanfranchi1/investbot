@@ -63,10 +63,14 @@ def fetch_historical_data(
         data = yf.download(ticker, start=start_date, end=end_date)
 
         if data.empty:
-            logging.warning(f"No data found for {ticker} in the given date range.")
+            logging.warning(
+                f"No data found for {', '.join(ticker)} in the given date range."
+            )
             return None
 
-        logging.info(f"Successfully fetched {len(data)} records for {ticker}.")
+        logging.info(
+            f"Successfully fetched {len(data)} records for {', '.join(ticker)}."
+        )
         adj_data = (
             data.stack(level=1).rename_axis(index=["Date", "Ticker"]).reset_index()
         )
@@ -74,7 +78,9 @@ def fetch_historical_data(
         adj_data.columns = adj_columns
         return adj_data
     except Exception as e:
-        logging.error(f"An error occurred while fetching data for {ticker}: {e}")
+        logging.error(
+            f"An error occurred while fetching data for {', '.join(ticker)}: {e}"
+        )
 
 
 def converting_list_of_dicts_to_dataframe(data: list[dict[str, Any]]) -> pd.DataFrame:
