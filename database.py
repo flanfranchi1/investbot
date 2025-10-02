@@ -107,24 +107,3 @@ def load_data_to_db(
                     logging.error(
                         f"Error while inserting data into '{table_name}': {e}"
                     )
-
-
-def get_target_tickers(engine: db.Engine) -> list[dict]:
-    """Retrieves existing tickers from the stock_prices table."""
-    with engine.connect() as connection:
-        query = db.text("""WITH DATES AS (
-            SELECT 
-                TICKER,
-                DATE,
-                LEAD(DATE) OVER (PARTITION BY TICKER ORDER BY DATE) AS NEXT_DATE
-            FROM STOCK_PRICES
-            )
-            SELECT
-            TICKER,
-            DATE AS START_DATE,
-            NEXT_DATE AS LAST_DATE
-            FROM DATES
-            WHERE JULIANDAY(NEXT_DATE) - JULIANDAY(DATE) > 4;""")
-        result = connection.execute(query).mappings()
-        target = [dict(row) for row in result]
-    return target

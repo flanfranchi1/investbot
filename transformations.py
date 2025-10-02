@@ -11,7 +11,7 @@ def sp500_companies_transformations(engine: db.Engine) -> pl.DataFrame:
     """Applies transformations to the sp500_companies table data."""
 
     df = pl.read_database("SELECT * FROM sp500_companies", engine)
-    if df.is_empty:
+    if df.is_empty():
         df = df.rename(mapping={"symbol": "ticker"})
         logging.warning("sp500_companies table is empty.")
     else:
@@ -58,14 +58,12 @@ def sp500_changes_transformations(engine: db.Engine) -> pl.DataFrame:
 def stock_prices_transformations(engine: db.Engine) -> pl.DataFrame:
     """Applies transformations to the stock_prices table data."""
     df = pl.read_database("SELECT * FROM stock_prices", engine)
-    if df.is_empty:
+    if df.is_empty():
         logging.warning("stock_prices table is empty.")
     else:
         df = df.select(
             pl.col("ticker").str.strip_chars().alias("ticker"),
-            pl.col("date")
-            .str.strptime(pl.Date, format="%Y-%m-%d", strict=False)
-            .alias("date"),
+            pl.col("date").alias("date"),
             pl.col("open").cast(pl.Float64).alias("open"),
             pl.col("high").cast(pl.Float64).alias("high"),
             pl.col("low").cast(pl.Float64).alias("low"),
@@ -81,96 +79,53 @@ def creating_sp500_index_timeline(
     changes_df: pl.DataFrame, companies_df: pl.DataFrame, trading_days: pl.Series
 ) -> pl.DataFrame:
     """Creates a timeline of S&P 500 index changes."""
-    min_date = trading_days.min().date()
 
-    tickers = (
-        changes_df.filter(pl.col("effective_date") >= pl.lit(min_date))
-        .select(pl.col("added_ticker", "removed_ticker", "effective_date"))
-        .unpivot(index="effective_date", on=["added_ticker", "removed_ticker"])
-        .select(pl.col("value").alias("ticker"))
-        .vstack((companies_df.select(pl.col("ticker"))))
-        .drop_nulls()
-        .unique()["ticker"]
-        .to_frame()
-        .with_columns(pl.lit(0).alias("join_key"))
-    )
+    min_date = trading_days.min()
+    adjusted_changes_df = changes_df.filter(pl.col("effective_date") >= min_date)
 
-    dates = trading_days.to_frame().with_columns(pl.lit(0).alias("join_key"))
-
-    tickers_and_dates_df = dates.join(tickers, on="join_key", how="inner").select(
-        pl.col("").cast(pl.Date).alias("date"), pl.col("ticker")
-    )
-
-    pivoted_date_ranges = (
-        changes_df.unpivot(
-            index="effective_date", on=["added_ticker", "removed_ticker"]
+    pivoted_changes = (
+        adjusted_changes_df.select(
+            pl.col("effective_date", "added_ticker", "removed_ticker")
         )
-        .sort(["value", "effective_date"])
+        .unpivot(index="effective_date", on=["added_ticker", "removed_ticker"])
         .select(
             pl.col("effective_date").alias("date"),
             pl.col("value").alias("ticker"),
-            pl.col("variable").count().over(pl.col("value")).alias("action_count"),
-            pl.when(pl.col("variable") == "added_ticker")
-            .then(pl.lit("added"))
-            .otherwise(
-                pl.when(pl.col("variable") == "removed_ticker")
-                .then(pl.lit("removed"))
-                .otherwise(pl.lit("unknown"))
-            )
-            .alias("action_type"),
+            pl.col("variable").str.strip_suffix("_ticker").alias("action_type"),
         )
     )
 
-    missing_added_dates = pivoted_date_ranges.filter(
-        (pl.col("action_type") == "removed") & (pl.col("action_count") == 1)
-    ).with_columns(
-        pl.lit("added").alias("action_type"),
-        pl.lit(dates[""].min().date()).alias("date"),
+    tickers = (
+        companies_df.select(pl.col("ticker"))
+        .vstack(pivoted_changes.select(pl.col("ticker")).drop_nulls(subset=["ticker"]))
+        .unique()
     )
 
-    final_data = (
-        pivoted_date_ranges.vstack(missing_added_dates)
-        .sort(["ticker", "date"])
-        .select(
-            pl.col("ticker"),
-            pl.when(pl.col("action_type") == "added")
-            .then(pl.col("date"))
-            .otherwise(pl.lit(None))
-            .alias("added_date"),
-            pl.col("date")
-            .shift(-1)
-            .fill_null(pl.lit(dates[""].max().date()))
-            .alias("removed_date"),
-        )
-        .join(tickers_and_dates_df, on="ticker", how="inner")
-        .filter(
-            (pl.col("date") >= pl.col("added_date"))
-            & (pl.col("date") < pl.col("removed_date"))
-            & (pl.col("ticker").str.len_chars() >= 1)
-        )
-        .drop("date")
+    target_dates = (
+        trading_days.to_frame().join(tickers, how="cross").rename({"": "date"})
     )
 
-    return final_data
+    return target_dates
 
 
 def catch_missing_prices(
     prices_df: pl.DataFrame, timeline_df: pl.DataFrame
 ) -> pl.DataFrame:
     """Identifies missing price entries in the stock_prices table."""
-    if prices_df.is_empty:
+    if prices_df.is_empty():
         grouped = timeline_df.group_by("ticker").agg(
-            pl.min("added_date").alias("first_missing_date"),
-            pl.max("removed_date").alias("last_missing_date"),
+            pl.min("date").alias("first_missing_date"),
+            pl.max("date").alias("last_missing_date"),
         )
 
     else:
-        merged_df = timeline_df.join(
+        merged_df = timeline_df.with_columns(pl.col("date").cast(pl.Date)).join(
             prices_df,
             on=["ticker", "date"],
             how="left",
             suffix="_price",
         )
+
         missing_prices_df = (
             merged_df.filter(pl.col("open").is_null())
             .select(pl.col("ticker"), pl.col("date"))
