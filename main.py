@@ -2,7 +2,7 @@
 
 import config
 import logging
-import pandas as pd
+from sqlalchemy.exc import IntegrityError
 from database import (
     get_engine,
     create_price_table,
@@ -14,11 +14,7 @@ from data_sourcing import (
     get_sp500_companies_data,
     fetch_historical_data,
 )
-from utils import (
-    date_range,
-    group_tickers_by_dates_range,
-    save_dates_range_dict_as_json,
-)
+from utils import date_range, group_tickers_by_dates_range
 from transformations import get_missing_price_ranges
 
 logging.basicConfig(
@@ -41,18 +37,29 @@ if __name__ == "__main__":
         config.LAST_MODIFIED_SP500_DATE_FILE_PATH,
         tables_ids=["constituents", "changes"],
     )
-    index_composition_stored_data = get_missing_price_ranges(
-        start_date, end_date, db_engine
-    )
-    if index_composition_stored_data:
+    while True:
+        index_composition_stored_data = get_missing_price_ranges(
+            start_date, end_date, db_engine
+        )
         batches = group_tickers_by_dates_range(index_composition_stored_data)
         for range, tickers in batches.items():
             start_date, end_date = range
             logging.info(f"Fetching data for {', '.join(tickers)} for {range}...")
             price_data_df = fetch_historical_data(tickers, start_date, end_date)
-            if price_data_df is None or price_data_df.empty:
-                logging.warning(f"No data fetched for {', '.join(tickers)}.")
+            try:
+                price_dict = price_data_df.to_dict(orient="records")
+            except AttributeError:
+                logging.warning(
+                    f"No data fetched for {', '.join(tickers)} for {range}. Skipping..."
+                )
                 continue
             else:
-                price_dict = price_data_df.to_dict(orient="records")
-                load_data_to_db(price_dict, "stock_prices", db_engine, mode="append")
+                try:
+                    load_data_to_db(
+                        price_dict, "stock_prices", db_engine, mode="append"
+                    )
+                except IntegrityError:
+                    logging.warning(
+                        f"Data for {', '.join(tickers)} for {range} already exists in the database. Skipping..."
+                    )
+                    break

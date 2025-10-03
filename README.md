@@ -18,10 +18,13 @@ The development is structured in an agile, sprint-based approach, focusing first
 This project leverages the following technologies:
 
 * **Language:** Python 3
-* **Web Scraping:** BeautifulSoup, Pandas
+* **Web Scraping:** BeautifulSoup
+**Data Manipulation:** Pandas, Polars and Marimo (reactive Notebook)
 * **Database ORM:** SQLAlchemy
-* **Initial Database:** SQLite
-* **Initial Data Source:** [Alpha Vantage API](https://www.alphavantage.co/)
+* **Database:** SQLite in early estage now using PostgreSQL
+**Containerization:** Docker to run database and later for 'packagin' the application itself
+* **Initial Data Source**: Switched to YFinance python's lib given [Alpha Vantage API](https://www.alphavantage.co/)'s free plan limitations 
+
 
 ## Getting Started
 
@@ -29,8 +32,8 @@ To get a local copy up and running, follow these simple steps.
 
 ### Prerequisites
 
-* Python 3.10+
-* An API Key from [Alpha Vantage](https://www.alphavantage.co/support/#api-key)
+* Python 3.1.13+
+**Docker Desktop 4.47.0+**
 
 ### Installation
 
@@ -47,9 +50,15 @@ To get a local copy up and running, follow these simple steps.
     ```sh
     pip install -r requirements.txt
     ```
-4.  Create a `.env` file in the root directory and add your API key
+4. Start docker artfacts:
+    ```sh
+    docker compose up
+    ```
+
+5.  Create a `.env` file in the root directory and add postgres's credentials
     ```env
-    ALPHA_VANTAGE_API_KEY='YOUR_API_KEY'
+    PG_USER='your_username'
+    PG_PASSWORD='your_password'
     ```
 
 ## Usage

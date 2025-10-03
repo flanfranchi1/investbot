@@ -56,20 +56,25 @@ def get_sp500_companies_data(
 
 
 def fetch_historical_data(
-    ticker: str | list[str], start_date: str, end_date: str
+    tickers: str | list[str], start_date: str, end_date: str
 ) -> pd.DataFrame | None:
     "Fetches historical stock data from Yahoo Finance."
-    try:
-        data = yf.download(ticker, start=start_date, end=end_date)
-
+    if isinstance(tickers, list) and len(tickers) == 0:
+        logging.warning("No tickers provided for data fetching.")
+        return None
+    else:
+        try:
+            data = yf.download(tickers, start=start_date, end=end_date)
+        except Exception as e:
+            logging.error(f"Error fetching data from Yahoo Finance: {e}")
         if data.empty:
             logging.warning(
-                f"No data found for {', '.join(ticker)} in the given date range."
+                f"No data found for {', '.join(tickers)} in the given date range."
             )
             return None
 
         logging.info(
-            f"Successfully fetched {len(data)} records for {', '.join(ticker)}."
+            f"Successfully fetched {len(data)} records for {', '.join(tickers)}."
         )
         adj_data = (
             data.stack(level=1).rename_axis(index=["Date", "Ticker"]).reset_index()
@@ -77,10 +82,6 @@ def fetch_historical_data(
         adj_columns = [snake_case(col) for col in adj_data.columns]
         adj_data.columns = adj_columns
         return adj_data
-    except Exception as e:
-        logging.error(
-            f"An error occurred while fetching data for {', '.join(ticker)}: {e}"
-        )
 
 
 def converting_list_of_dicts_to_dataframe(data: list[dict[str, Any]]) -> pd.DataFrame:

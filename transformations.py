@@ -16,7 +16,7 @@ def sp500_companies_transformations(engine: db.Engine) -> pl.DataFrame:
         logging.warning("sp500_companies table is empty.")
     else:
         df = df.select(
-            pl.col("symbol").str.strip_chars().alias("ticker"),
+            pl.col("symbol").str.strip_chars().str.replace(".", "").alias("ticker"),
             pl.col("security").str.strip_chars().alias("company_name"),
             pl.col("gics_sector").str.strip_chars().alias("sector"),
             pl.col("gics_sub_industry").str.strip_chars().alias("sub_industry"),
@@ -180,7 +180,11 @@ def get_missing_price_ranges(start_date: str, end_date: str, engine=db.Engine) -
             pl.col("last_missing_date")
             .dt.strftime("%Y-%m-%d")
             .alias("last_missing_date"),
+            (pl.col("last_missing_date") - pl.col("first_missing_date")).alias(
+                "date_range"
+            ),
         )
+        .sort("date_range", descending=True)
         .to_dict(as_series=False)
     )
     return pivoting_dict(missing_ranges)

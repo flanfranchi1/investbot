@@ -3,13 +3,10 @@
 import json
 import logging
 import pandas as pd
-import requests
 from bs4 import BeautifulSoup
 from sqlalchemy import Engine
 from pathlib import Path
 from datetime import datetime, timedelta
-
-from pathlib import Path
 
 
 def date_range(months: int, delay: int = 0) -> tuple:
