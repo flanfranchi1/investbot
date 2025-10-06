@@ -6,6 +6,8 @@ This project is a platform designed to monitor real-time asset prices for all co
 
 The development is structured in an agile, sprint-based approach, focusing first on building a solid data engineering pipeline (ETL) that will serve as the foundation for more complex trading logic.
 
+Along developments strategical decisions will be recorded [here](./docs/STRATEGIC_DECISIONS.md) in case your interested in, check it out!
+
 ### Key Features
 * **Dynamic Ticker Sourcing:** Automatically fetches the current list of S&P 500 companies.
 * **Data Ingestion:** Fetches stock market data through a dedicated, abstracted data source layer.

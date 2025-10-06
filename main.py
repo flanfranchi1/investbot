@@ -2,6 +2,7 @@
 
 import config
 import logging
+import pandas as pd
 from sqlalchemy.exc import IntegrityError
 from database import (
     get_engine,
@@ -42,15 +43,23 @@ if __name__ == "__main__":
             start_date, end_date, db_engine
         )
         batches = group_tickers_by_dates_range(index_composition_stored_data)
-        for range, tickers in batches.items():
-            start_date, end_date = range
-            logging.info(f"Fetching data for {', '.join(tickers)} for {range}...")
-            price_data_df = fetch_historical_data(tickers, start_date, end_date)
+        for date_range, tickers in batches.items():
+            start_date, end_date = date_range
+            logging.info(f"Fetching data for {', '.join(tickers)} for {date_range}...")
+            qtty_subbatches = (len(tickers) - 1) // 10 + 1
+            data = []
+            for i in range(0, len(batches), qtty_subbatches):
+                data.append(
+                    fetch_historical_data(
+                        tickers[i : i + qtty_subbatches], start_date, end_date
+                    )
+                )
             try:
+                price_data_df = pd.concat(data)
                 price_dict = price_data_df.to_dict(orient="records")
-            except AttributeError:
+            except ValueError or AttributeError:
                 logging.warning(
-                    f"No data fetched for {', '.join(tickers)} for {range}. Skipping..."
+                    f"No data fetched for {', '.join(tickers)} for {date_range}. Skipping..."
                 )
                 continue
             else:
@@ -60,6 +69,10 @@ if __name__ == "__main__":
                     )
                 except IntegrityError:
                     logging.warning(
-                        f"Data for {', '.join(tickers)} for {range} already exists in the database. Skipping..."
+                        f"Data for {', '.join(tickers)} for {date_range} already exists in the database. Skipping..."
                     )
                     break
+        if len(index_composition_stored_data) == 0:
+            logging.info("No missing data found. ETL process completed.")
+            break
+        exit

@@ -89,9 +89,15 @@ def creating_sp500_index_timeline(
         )
         .unpivot(index="effective_date", on=["added_ticker", "removed_ticker"])
         .select(
-            pl.col("effective_date").alias("date"),
+            pl.when(pl.col("variable") == "added_ticker")
+            .then(pl.col("effective_date"))
+            .otherwise(None)
+            .alias("added_date"),
+            pl.when(pl.col("variable") == "removed_ticker")
+            .then(pl.col("effective_date"))
+            .otherwise(None)
+            .alias("removed_date"),
             pl.col("value").alias("ticker"),
-            pl.col("variable").str.strip_suffix("_ticker").alias("action_type"),
         )
     )
 
@@ -102,7 +108,17 @@ def creating_sp500_index_timeline(
     )
 
     target_dates = (
-        trading_days.to_frame().join(tickers, how="cross").rename({"": "date"})
+        trading_days.to_frame()
+        .join(tickers, how="cross")
+        .rename({"": "date"})
+        .join(pivoted_changes, on="ticker", how="left")
+        .filter(
+            (pl.col("date") >= pl.col("added_date"))
+            & (
+                (pl.col("date") < pl.col("removed_date"))
+                | pl.col("removed_date").is_null()
+            )
+        )
     )
 
     return target_dates
@@ -157,7 +173,8 @@ def catch_missing_prices(
                     pl.len().alias("missing_count"),
                 ]
             )
-            .filter(pl.col("missing_count") > 4)
+            .filter(pl.col("missing_count") >= 2)
+            .sort("missing_count", descending=True)
             .select(["ticker", "first_missing_date", "last_missing_date"])
         )
     return grouped
@@ -180,11 +197,7 @@ def get_missing_price_ranges(start_date: str, end_date: str, engine=db.Engine) -
             pl.col("last_missing_date")
             .dt.strftime("%Y-%m-%d")
             .alias("last_missing_date"),
-            (pl.col("last_missing_date") - pl.col("first_missing_date")).alias(
-                "date_range"
-            ),
         )
-        .sort("date_range", descending=True)
         .to_dict(as_series=False)
     )
     return pivoting_dict(missing_ranges)
