@@ -1,18 +1,18 @@
 # *-* coding: utf-8 -*-
 
-import json
+
 import logging
 import pandas as pd
 from bs4 import BeautifulSoup
 from sqlalchemy import Engine
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import date, timedelta
 
 
 def date_range(months: int, delay: int = 0) -> tuple:
     """Returns start and end dates for the given number of months."""
-    end_date = datetime.now() + timedelta(days=delay)
-    start_date = end_date - timedelta(days=30 * months)
+    end_date = date.today() + timedelta(days=delay)
+    start_date = end_date - timedelta(days=30.35416 * months)  # ((364 * 3) + 365) / 48
     return start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
 
 
@@ -131,16 +131,3 @@ def group_tickers_by_dates_range(tickers_with_dates: list[dict]) -> dict:
             grouped[dates_range] = []
         grouped[dates_range].append(item["ticker"])
     return grouped
-
-
-def save_dates_range_dict_as_json(data: dict, file_path: Path) -> None:
-    """pivot dictionary and saves to a JSON file."""
-    pivoted_dict = {}
-    for date_range, tickers in data.items():
-        for ticker in tickers:
-            pivoted_dict[ticker] = (
-                [] if ticker not in pivoted_dict.keys() else pivoted_dict[ticker]
-            )
-        pivoted_dict[ticker].append(date_range)
-    with file_path.open("w") as f:
-        json.dump(pivoted_dict, f, indent=4)

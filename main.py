@@ -28,7 +28,7 @@ logging.basicConfig(
 
 # --- Main execution block ---
 if __name__ == "__main__":
-    start_date, end_date = date_range(months=config.SP500_STOCK_PRICE_RANGE, delay=-1)
+    start_date, end_date = date_range(months=config.SP500_STOCK_PRICE_RANGE)
     db_engine = get_engine(config.POSTGRES_URL)
     create_price_table(db_engine)
     create_sp500_companies_table(db_engine)
@@ -46,7 +46,7 @@ if __name__ == "__main__":
         for date_range, tickers in batches.items():
             start_date, end_date = date_range
             logging.info(f"Fetching data for {', '.join(tickers)} for {date_range}...")
-            qtty_subbatches = (len(tickers) - 1) // 10 + 1
+            qtty_subbatches = (len(tickers) - 1) // 50 + 1
             data = []
             for i in range(0, len(batches), qtty_subbatches):
                 data.append(

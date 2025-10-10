@@ -65,6 +65,10 @@ def fetch_historical_data(
     else:
         try:
             data = yf.download(tickers, start=start_date, end=end_date)
+        except yf.utils.YFRateLimitError:
+            logging.error("Rate limit exceeded when fetching data from Yahoo Finance.")
+            return None
+
         except Exception as e:
             logging.error(f"Error fetching data from Yahoo Finance: {e}")
         if data.empty:

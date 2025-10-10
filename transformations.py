@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import datetime as dt
 import polars as pl
 import sqlalchemy as db
 from data_sourcing import get_market_working_days
@@ -39,7 +40,7 @@ def sp500_changes_transformations(engine: db.Engine) -> pl.DataFrame:
             (
                 pl.col("effective_date")
                 .str.strip_chars()
-                .str.strptime(pl.Date, format="%B %e, %Y", strict=False)
+                .str.strptime(pl.Date, format="%B %e, %Y", exact=True)
                 .alias("effective_date")
             ),
             pl.col("added_ticker").str.strip_chars().alias("added_ticker"),
@@ -51,7 +52,16 @@ def sp500_changes_transformations(engine: db.Engine) -> pl.DataFrame:
         ]
     )
     df = df.drop_nulls(subset=["effective_date"])
-    df = df.unique(subset=["effective_date", "added_ticker", "removed_ticker"])
+    df = df.with_columns(
+        pl.when(pl.col("added_ticker").str.len_chars() == 0)
+        .then(pl.lit(None))
+        .otherwise(pl.col("added_ticker"))
+        .alias("added_ticker"),
+        pl.when(pl.col("removed_ticker").str.len_chars() == 0)
+        .then(pl.lit(None))
+        .otherwise(pl.col("removed_ticker"))
+        .alias("removed_ticker"),
+    ).unique(subset=["effective_date", "added_ticker", "removed_ticker"])
     return df
 
 
@@ -81,7 +91,9 @@ def creating_sp500_index_timeline(
     """Creates a timeline of S&P 500 index changes."""
 
     min_date = trading_days.min()
-    adjusted_changes_df = changes_df.filter(pl.col("effective_date") >= min_date)
+    adjusted_changes_df = changes_df.filter(
+        pl.coalesce(pl.col("effective_date"), pl.lit(dt.date(1900, 1, 1))) >= min_date
+    )
 
     pivoted_changes = (
         adjusted_changes_df.select(
@@ -90,15 +102,16 @@ def creating_sp500_index_timeline(
         .unpivot(index="effective_date", on=["added_ticker", "removed_ticker"])
         .select(
             pl.when(pl.col("variable") == "added_ticker")
-            .then(pl.col("effective_date"))
+            .then(pl.coalesce(pl.col("effective_date"), pl.lit(min_date)))
             .otherwise(None)
             .alias("added_date"),
             pl.when(pl.col("variable") == "removed_ticker")
-            .then(pl.col("effective_date"))
+            .then(pl.coalesce(pl.col("effective_date"), pl.lit(dt.date.today())))
             .otherwise(None)
             .alias("removed_date"),
             pl.col("value").alias("ticker"),
         )
+        .filter(pl.col("ticker").is_not_null())
     )
 
     tickers = (
@@ -113,10 +126,10 @@ def creating_sp500_index_timeline(
         .rename({"": "date"})
         .join(pivoted_changes, on="ticker", how="left")
         .filter(
-            (pl.col("date") >= pl.col("added_date"))
+            (pl.col("date") >= pl.coalesce(pl.col("added_date"), pl.lit(min_date)))
             & (
-                (pl.col("date") < pl.col("removed_date"))
-                | pl.col("removed_date").is_null()
+                pl.col("date")
+                < pl.coalesce(pl.col("removed_date"), pl.lit(dt.date.today()))
             )
         )
     )
@@ -183,9 +196,12 @@ def catch_missing_prices(
 def get_missing_price_ranges(start_date: str, end_date: str, engine=db.Engine) -> dict:
     """Fetches missing price ranges from the database."""
 
+    adjusted_end_date = str(dt.date.fromisoformat(end_date) - dt.timedelta(days=1))
     companies_df = sp500_companies_transformations(engine=engine)
     changes_df = sp500_changes_transformations(engine=engine)
-    trading_days = pl.from_pandas(get_market_working_days(start_date, end_date))
+    trading_days = pl.from_pandas(
+        get_market_working_days(start_date, adjusted_end_date)
+    )
     timeline_df = creating_sp500_index_timeline(changes_df, companies_df, trading_days)
     stock_prices = stock_prices_transformations(engine=engine)
     missing_ranges = (
