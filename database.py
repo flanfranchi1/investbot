@@ -70,6 +70,7 @@ def create_price_table(engine: db.Engine) -> None:
         db.Column("low", db.Float, nullable=True),
         db.Column("close", db.Float, nullable=True),
         db.Column("volume", db.Integer, nullable=True),
+        db.Column("created_at", db.TIMESTAMP, server_default=db.func.now()),
         db.UniqueConstraint("ticker", "date", name="uix_ticker_date"),
     )
 

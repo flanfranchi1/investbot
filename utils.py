@@ -1,6 +1,7 @@
 # *-* coding: utf-8 -*-
 
-
+import datetime as dt
+import json
 import logging
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -131,3 +132,15 @@ def group_tickers_by_dates_range(tickers_with_dates: list[dict]) -> dict:
             grouped[dates_range] = []
         grouped[dates_range].append(item["ticker"])
     return grouped
+
+
+def save_missing_data_to_json(
+    tickers: list[str], start_date: str, end_date: str, path: Path
+) -> None:
+    if not path.exists():
+        path.mkdir()
+    adjusted_dict = {ticker: (start_date, end_date) for ticker in tickers}
+    filename = dt.date.today().strftime("%Y_%m_%d") + ".json"
+    full_path = path / filename
+    with full_path.open(mode='+w"') as file:
+        file.write(json.dump(adjusted_dict, indent=4))

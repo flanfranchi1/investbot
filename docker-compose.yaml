@@ -1,4 +1,5 @@
-version: '3.8'
+include:
+   - airflow.yaml
 
 name: investbot
 
@@ -13,9 +14,8 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      # Corrigido o caminho e associado ao volume declarado abaixo
       - db_data:/var/lib/postgresql/data
+    command: postgres -c track_commit_timestamp=on
 
-# Declaração do volume que estava faltando
 volumes:
   db_data:

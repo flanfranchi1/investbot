@@ -8,7 +8,7 @@ POSTGRES_URL = (
 )
 BASE_DIR = Path(__file__).resolve().parent
 RAW_DATA_DIR = BASE_DIR / "data" / "raw"
-missing_dates_json_path = RAW_DATA_DIR / "missing_dates.json"
+MISSING_DATA_LOG_FOLDER = RAW_DATA_DIR / "missing_data"
 WIKI_SP_500_UPDATED_AT_FILE_PATH = RAW_DATA_DIR / "sp500_wiki_last_updated.txt"
 SQLITE_DIR = BASE_DIR / "data" / "sqlite"
 SQLITE_DB_PATH = SQLITE_DIR / "stock_data.db"

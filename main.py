@@ -3,6 +3,7 @@
 import config
 import logging
 import pandas as pd
+from time import sleep
 from sqlalchemy.exc import IntegrityError
 from database import (
     get_engine,
@@ -43,17 +44,26 @@ if __name__ == "__main__":
             start_date, end_date, db_engine
         )
         batches = group_tickers_by_dates_range(index_composition_stored_data)
+        if not batches:
+            logging.info("No missing data found. ETL process completed.")
+            break
         for date_range, tickers in batches.items():
-            start_date, end_date = date_range
+            batch_start_date, batch_end_date = date_range
             logging.info(f"Fetching data for {', '.join(tickers)} for {date_range}...")
-            qtty_subbatches = (len(tickers) - 1) // 50 + 1
+            sub_batches_size = 50
             data = []
-            for i in range(0, len(batches), qtty_subbatches):
-                data.append(
-                    fetch_historical_data(
-                        tickers[i : i + qtty_subbatches], start_date, end_date
-                    )
+            for i in range(0, len(tickers), sub_batches_size):
+                sub_batch = tickers[i : i + sub_batches_size]
+                logging.info(f"Fetching sub-batch of {len(sub_batch)} tickers...")
+                current_sub_batch_data = fetch_historical_data(
+                    sub_batch, batch_start_date, batch_end_date
                 )
+                if (
+                    current_sub_batch_data is not None
+                    and not current_sub_batch_data.empty
+                ):
+                    data.append(current_sub_batch_data)
+                    sleep(5)
             try:
                 price_data_df = pd.concat(data)
                 price_dict = price_data_df.to_dict(orient="records")

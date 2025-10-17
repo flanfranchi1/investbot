@@ -11,7 +11,7 @@ def _():
     from sqlalchemy import create_engine
     import pandas_market_calendars as mcal
     db_uri = "postgresql+psycopg2://investbot_user:investbot_password@localhost/investbot_db"
-        
+    
     return create_engine, db_uri, mo, pl
 
 
@@ -52,7 +52,7 @@ def _(changes, mo, pl):
     ).alias('validate')
 
     validation_df = (
-    
+
         changes
         .unique(pl.col('ticker', 'date', 'action'), keep='first')
         .with_columns(validate_order)
@@ -93,6 +93,16 @@ def _(engine, mo, pl, tickers_for_analysis):
         ;"""
     raw_changes = pl.read_database(query=sql_query, connection=engine)
     mo.ui.table(raw_changes)
+    return
+
+
+@app.cell
+def _(mo, pl, tickers_for_analysis):
+    import datetime as dt
+    mo.ui.table(
+        tickers_for_analysis
+    .filter(pl.col('date') >= dt.date.today() - dt.timedelta(days=364.25*5))
+    )
     return
 
 

@@ -8,7 +8,7 @@ import yfinance as yf
 from bs4 import BeautifulSoup
 from database import get_engine, load_data_to_db
 from pandas_market_calendars import get_calendar
-from utils import snake_case, parse_wikipedia_table
+from utils import snake_case, parse_wikipedia_table, save_missing_data_to_json
 from pathlib import Path
 from typing import Any
 
@@ -64,11 +64,20 @@ def fetch_historical_data(
         return None
     else:
         try:
-            data = yf.download(tickers, start=start_date, end=end_date)
+            data = yf.download(
+                tickers, start=start_date, end=end_date, progress=False, ignore_tz=True
+            )
         except yf.utils.YFRateLimitError:
             logging.error("Rate limit exceeded when fetching data from Yahoo Finance.")
             return None
-
+        except yf.utils.YFMissingDataError or yf.utils.YFTzMissingError:
+            logging.error("No data found for the given tickers and date range.")
+            save_missing_data_to_json(
+                start_date=start_date,
+                end_date=end_date,
+                tickers=tickers,
+                path=config.MISSING_DATA_LOG_FOLDER,
+            )
         except Exception as e:
             logging.error(f"Error fetching data from Yahoo Finance: {e}")
         if data.empty:
@@ -81,7 +90,9 @@ def fetch_historical_data(
             f"Successfully fetched {len(data)} records for {', '.join(tickers)}."
         )
         adj_data = (
-            data.stack(level=1).rename_axis(index=["Date", "Ticker"]).reset_index()
+            data.stack(level=1, future_stack=True)
+            .rename_axis(index=["Date", "Ticker"])
+            .reset_index()
         )
         adj_columns = [snake_case(col) for col in adj_data.columns]
         adj_data.columns = adj_columns

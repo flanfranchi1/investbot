@@ -15,6 +15,7 @@ greenlet==3.2.4
 h11==0.16.0
 html5lib==1.1
 idna==3.10
+iniconfig==2.1.0
 ipdb==0.13.13
 ipython==9.4.0
 ipython_pygments_lexers==1.1.1
@@ -23,9 +24,10 @@ jedi==0.19.2
 korean-lunar-calendar==0.3.1
 loro==1.5.4
 lxml==6.0.0
-marimo==0.14.17
+marimo==0.16.5
 Markdown==3.8.2
 matplotlib-inline==0.1.7
+msgspec==0.19.0
 multitasking==0.0.12
 narwhals==2.1.1
 numpy==2.3.2
@@ -36,6 +38,7 @@ parso==0.8.4
 peewee==3.18.2
 pexpect==4.9.0
 platformdirs==4.3.8
+pluggy==1.6.0
 polars==1.32.3
 prompt_toolkit==3.0.51
 protobuf==6.32.0
@@ -48,6 +51,7 @@ pycparser==2.22
 Pygments==2.19.2
 pyluach==2.3.0
 pymdown-extensions==10.16.1
+pytest==8.4.2
 python-dateutil==2.9.0.post0
 python-dotenv==1.1.1
 pytz==2025.2
