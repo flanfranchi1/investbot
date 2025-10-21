@@ -6,7 +6,7 @@ import pandas as pd
 import requests
 import yfinance as yf
 from bs4 import BeautifulSoup
-from database import get_engine, load_data_to_db
+from database_mngmnt import get_engine, load_data_to_db
 from pandas_market_calendars import get_calendar
 from utils import snake_case, parse_wikipedia_table, save_missing_data_to_json
 from pathlib import Path

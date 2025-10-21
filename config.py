@@ -1,11 +1,13 @@
 # *-- coding: utf-8 --*
 from pathlib import Path
-
+from os import getenv
 
 SP_500_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-POSTGRES_URL = (
-    "postgresql+psycopg2://investbot_user:investbot_password@localhost/investbot_db"
-)
+db_host = getenv("PG_HOST", "localhost")
+db_user = getenv("PG_USER")
+db_password = getenv("PG_PASSWORD")
+db = getenv("PG_DB", "investbot_db")
+POSTGRES_URL = f"postgresql+psycopg2://{db_user}:{db_password}@{db_host}/{db}"
 BASE_DIR = Path(__file__).resolve().parent
 RAW_DATA_DIR = BASE_DIR / "data" / "raw"
 MISSING_DATA_LOG_FOLDER = RAW_DATA_DIR / "missing_data"

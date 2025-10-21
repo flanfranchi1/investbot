@@ -8,11 +8,18 @@ app = marimo.App(width="medium", auto_download=["html"])
 def _():
     import marimo as mo
     import polars as pl
-    from database import get_engine
+    from database_mngmnt import get_engine
     from config import POSTGRES_URL
-    from transformations import stock_prices_transformations, catch_missing_prices, creating_sp500_index_timeline, sp500_changes_transformations, sp500_companies_transformations
+    from transformations import (
+        stock_prices_transformations,
+        catch_missing_prices,
+        creating_sp500_index_timeline,
+        sp500_changes_transformations,
+        sp500_companies_transformations,
+    )
     from utils import date_range
     from data_sourcing import get_market_working_days
+
     return (
         POSTGRES_URL,
         catch_missing_prices,
@@ -63,14 +70,16 @@ def _(
 ):
     companies_df = sp500_companies_transformations(engine=engine)
     changes_df = sp500_changes_transformations(engine=engine)
-    timeline_df = creating_sp500_index_timeline(changes_df, companies_df, target_dates_df)
+    timeline_df = creating_sp500_index_timeline(
+        changes_df, companies_df, target_dates_df
+    )
     missing_ranges = catch_missing_prices(prices_df, timeline_df)
     return (missing_ranges,)
 
 
 @app.cell
 def _(missing_ranges, mo):
-    mo.ui.dataframe(missing_ranges.sort('ticker'))
+    mo.ui.dataframe(missing_ranges.sort("ticker"))
     return
 
 

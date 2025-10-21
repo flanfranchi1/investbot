@@ -8,7 +8,7 @@ from utils import pivoting_dict
 import logging
 
 
-def sp500_companies_transformations(engine: db.Engine) -> pl.DataFrame:
+def sp500_companies_transformations(engine: db.engine) -> pl.DataFrame:
     """Applies transformations to the sp500_companies table data."""
 
     df = pl.read_database("SELECT * FROM sp500_companies", engine)
@@ -34,7 +34,7 @@ def sp500_companies_transformations(engine: db.Engine) -> pl.DataFrame:
     return df
 
 
-def sp500_changes_transformations(engine: db.Engine) -> pl.DataFrame:
+def sp500_changes_transformations(engine: db.engine) -> pl.DataFrame:
     """Applies transformations to the sp500_changes table data."""
 
     df = pl.read_database("SELECT * FROM sp500_changes", engine)
@@ -68,7 +68,7 @@ def sp500_changes_transformations(engine: db.Engine) -> pl.DataFrame:
     return df
 
 
-def stock_prices_transformations(engine: db.Engine) -> pl.DataFrame:
+def stock_prices_transformations(engine: db.engine) -> pl.DataFrame:
     """Applies transformations to the stock_prices table data."""
     df = pl.read_database("SELECT * FROM stock_prices", engine)
     if df.is_empty():
@@ -196,7 +196,7 @@ def catch_missing_prices(
     return grouped
 
 
-def get_missing_price_ranges(start_date: str, end_date: str, engine=db.Engine) -> dict:
+def get_missing_price_ranges(start_date: str, end_date: str, engine=db.engine) -> dict:
     """Fetches missing price ranges from the database."""
 
     adjusted_end_date = str(dt.date.fromisoformat(end_date) - dt.timedelta(days=1))

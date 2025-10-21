@@ -4,8 +4,8 @@ import datetime as dt
 import json
 import logging
 import pandas as pd
+from sqlalchemy import engine
 from bs4 import BeautifulSoup
-from sqlalchemy import Engine
 from pathlib import Path
 from datetime import date, timedelta
 
@@ -21,7 +21,7 @@ def snake_case(s):
     return s.lower().replace(" ", "_").replace("-", "_").replace(".", "")
 
 
-def sql_query_to_dataframe(engine: Engine, query_file: Path) -> pd.DataFrame:
+def sql_query_to_dataframe(engine: engine, query_file: Path) -> pd.DataFrame:
     """Executes a SQL query from a file and returns the result as a Polars DataFrame."""
     with Path.read_text(query_file) as query_file:
         with engine.connect() as connection:

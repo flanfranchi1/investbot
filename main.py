@@ -5,7 +5,7 @@ import logging
 import pandas as pd
 from time import sleep
 from sqlalchemy.exc import IntegrityError
-from database import (
+from database_mngmnt import (
     get_engine,
     create_price_table,
     create_sp500_companies_table,

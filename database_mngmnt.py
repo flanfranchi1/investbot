@@ -6,13 +6,13 @@ import logging
 from pathlib import Path
 
 
-def get_engine(db_url: Path) -> db.Engine:
+def get_engine(db_url: Path) -> db.engine:
     """Creates a database engine instance."""
     engine = db.create_engine(db_url)
     return engine
 
 
-def create_sp500_companies_table(engine):
+def create_sp500_companies_table(engine: db.engine):
     """Creates the sp500_companies table if it doesn't exist."""
     metadata = db.MetaData()
 
@@ -34,7 +34,7 @@ def create_sp500_companies_table(engine):
     logging.info("Table 'sp500_companies' is ready.")
 
 
-def create_sp500_changes_table(engine):
+def create_sp500_changes_table(engine: db.engine):
     """Creates the sp500_changes table if it doesn't exist."""
     metadata = db.MetaData()
 
@@ -55,7 +55,7 @@ def create_sp500_changes_table(engine):
     logging.info("Table 'sp500_cohanges' is ready.")
 
 
-def create_price_table(engine: db.Engine) -> None:
+def create_price_table(engine: db.engine) -> None:
     """Creates the stock_prices table if it doesn't exist."""
     metadata = db.MetaData()
 
@@ -79,7 +79,7 @@ def create_price_table(engine: db.Engine) -> None:
 
 
 def load_data_to_db(
-    data: list[dict], table_name: str, engine: db.Engine, mode: str = "append"
+    data: list[dict], table_name: str, engine: db.engine, mode: str = "append"
 ) -> None:
     """Loads data into the specified database table."""
     metadata = db.MetaData()
