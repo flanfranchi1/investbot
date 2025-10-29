@@ -17,6 +17,7 @@ def get_sp500_companies_data(
     sp500_source: str,
     last_change_date_file: Path,
     tables_ids: list[str] = ["constituents", "changes"],
+    db_uri: str = config.POSTGRES_URL,
 ) -> pd.DataFrame:
     """Fetches S&P 500 companies data from the given URL and returns it as a DataFrame."""
     (last_change_date_file.parent.mkdir(parents=True, exist_ok=True))
@@ -48,7 +49,7 @@ def get_sp500_companies_data(
         for table_id in tables_ids:
             table = soup.find("table", {"id": table_id})
             data = parse_wikipedia_table(table)
-            db_engine = get_engine(config.POSTGRES_URL)
+            db_engine = get_engine(db_uri)
             table_name = (
                 f"sp500_{'companies' if table_id == 'constituents' else 'changes'}"
             )

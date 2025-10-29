@@ -18,41 +18,64 @@ from data_sourcing import (
 )
 from utils import date_range, group_tickers_by_dates_range
 from transformations import get_missing_price_ranges
-from airflow.providers.standard.operators.python import PythonOperator
-from airflow.sdk import DAG
+from airflow.providers.postgres.hooks.postgres import PostgresHook
+from airflow.sdk import DAG, task
+
+postgres_hook = PostgresHook("investbot-db")
+db_engine = get_engine(postgres_hook.get_uri())
 
 
+@task
 def _database_setup():
-    db_engine = get_engine(config.POSTGRES_URL)
     create_price_table(db_engine)
     create_sp500_companies_table(db_engine)
     create_sp500_changes_table(db_engine)
 
 
+@task
 def _sp500_data():
     get_sp500_companies_data(
         config.SP_500_URL,
         config.LAST_MODIFIED_SP500_DATE_FILE_PATH,
         tables_ids=["constituents", "changes"],
+        db_uri=postgres_hook.get_uri(),
     )
 
 
+@task
 def _missing_date_ranges():
     start_date, end_date = date_range(months=config.SP500_STOCK_PRICE_RANGE)
-    engine = get_engine(config.POSTGRES_URL)
     index_composition_stored_data = get_missing_price_ranges(
-        start_date, end_date, engine
+        start_date, end_date, db_engine
     )
-    batches = group_tickers_by_dates_range(index_composition_stored_data)
-    return batches
+    batches_dict = group_tickers_by_dates_range(index_composition_stored_data)
+    batches_list = []
+    for (start, end), tickers in batches_dict.items():
+        batches_list.append({"start_date": start, "end_date": end, "tickers": tickers})
+
+    logging.info(f"Found {len(batches_list)} batches to process.")
+    return batches_list  # <-- Retorna a lista
 
 
-def _fettch_data(missing_date_ranges: dict) -> list:
-    for range, tickers in missing_date_ranges.items():
-        range_start_date, range_end_date = range
-        logging.info(f"Fetching data for {', '.join(tickers)} for {range}...")
+@task
+def _fettch_data(batches_list: list) -> list:  # <-- Recebe a lista
+    all_price_data = []  # <-- Acumulador principal FORA do loop
+
+    if not batches_list:
+        logging.info("No batches received. Skipping fetch.")
+        return []
+
+    for batch in batches_list:  # <-- Itera sobre a lista
+        range_start_date = batch["start_date"]  # <-- Pega do dict
+        range_end_date = batch["end_date"]  # <-- Pega do dict
+        tickers = batch["tickers"]  # <-- Pega do dict
+
+        logging.info(
+            f"Fetching data for {', '.join(tickers)} for {range_start_date} to {range_end_date}..."
+        )
         sub_batches_size = 50
-        data = []
+        data = []  # Acumulador do sub-batch
+
         for i in range(0, len(tickers), sub_batches_size):
             sub_batch = tickers[i : i + sub_batches_size]
             logging.info(f"Fetching sub-batch of {len(sub_batch)} tickers...")
@@ -62,26 +85,34 @@ def _fettch_data(missing_date_ranges: dict) -> list:
             if current_sub_batch_data is not None and not current_sub_batch_data.empty:
                 data.append(current_sub_batch_data)
                 sleep(5)
+
         try:
             price_data_df = pd.concat(data)
             price_dict = price_data_df.to_dict(orient="records")
-            return price_dict
+            all_price_data.extend(price_dict)  # <-- Acumula no principal
         except ValueError or AttributeError:
             logging.warning(
-                f"No data fetched for {', '.join(tickers)} for {date_range}. Skipping..."
+                f"No data fetched for {', '.join(tickers)} for {range_start_date} to {range_end_date}. Skipping..."
             )
-            continue
+
+    return all_price_data  # <-- Retorna TUDO no final
 
 
-def load_fetched_data(price_dict: list):
-    db_engine = get_engine(config.POSTGRES_URL)
+@task
+def _load_fetched_data(price_dict: list):
+    if not price_dict:
+        logging.warning("No price data received to load. Skipping.")
+        return
+
     try:
         load_data_to_db(price_dict, "stock_prices", db_engine, mode="append")
     except IntegrityError:
         tickers = set(item["ticker"] for item in price_dict)
         logging.warning(
-            f"Data for {', '.join(tickers)} for {date_range} already exists in the database. Skipping..."
+            f"Data for {', '.join(tickers)} already exists in the database. Skipping..."
         )
+    except Exception as e:
+        logging.error(f"Error loading data: {e}")
 
 
 default_args = {
@@ -98,21 +129,11 @@ with DAG(
     tags=["investbot", "etl"],
     default_args=default_args,
 ) as dag:
-    database_setup = PythonOperator(
-        task_id="database_setup", python_callable=_database_setup
-    )
-    sp500_data = PythonOperator(task_id="sp500_data", python_callable=_sp500_data)
-    _missing_date_ranges = PythonOperator(
-        task_id="missing_date_ranges", python_callable=_missing_date_ranges
-    )
-    fetch_data = PythonOperator(
-        task_id="fetch_data",
-        python_callable=_fettch_data,
-        op_args=["{{ ti.xcom_pull(task_ids='missing_date_ranges') }}"],
-    )
-    load_data = PythonOperator(
-        task_id="load_data",
-        python_callable=load_fetched_data,
-        op_args=["{{ ti.xcom_pull(task_ids='fetch_data') }}"],
-    )
-    database_setup >> sp500_data >> _missing_date_ranges >> fetch_data >> load_data
+    setup_task = _database_setup()
+    sp500_task = _sp500_data()
+    missing_ranges = _missing_date_ranges()
+
+    fetched_data = _fettch_data(missing_ranges)
+    load_task = _load_fetched_data(fetched_data)
+
+    setup_task >> sp500_task >> missing_ranges
