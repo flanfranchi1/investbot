@@ -84,7 +84,7 @@ def _fettch_data(batches_list: list) -> list:  # <-- Recebe a lista
             )
             if current_sub_batch_data is not None and not current_sub_batch_data.empty:
                 data.append(current_sub_batch_data)
-                sleep(5)
+            sleep(5)
 
         try:
             price_data_df = pd.concat(data)

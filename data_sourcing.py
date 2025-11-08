@@ -73,31 +73,27 @@ def fetch_historical_data(
             return None
         except yf.utils.YFMissingDataError or yf.utils.YFTzMissingError:
             logging.error("No data found for the given tickers and date range.")
-            save_missing_data_to_json(
-                start_date=start_date,
-                end_date=end_date,
-                tickers=tickers,
-                path=config.MISSING_DATA_LOG_FOLDER,
-            )
+            return None
         except Exception as e:
             logging.error(f"Error fetching data from Yahoo Finance: {e}")
-        if data.empty:
-            logging.warning(
-                f"No data found for {', '.join(tickers)} in the given date range."
-            )
             return None
-
-        logging.info(
-            f"Successfully fetched {len(data)} records for {', '.join(tickers)}."
-        )
-        adj_data = (
-            data.stack(level=1, future_stack=True)
-            .rename_axis(index=["Date", "Ticker"])
-            .reset_index()
-        )
-        adj_columns = [snake_case(col) for col in adj_data.columns]
-        adj_data.columns = adj_columns
-        return adj_data
+        else:
+            if data.empty:
+                logging.warning(
+                    f"No data found for {', '.join(tickers)} in the given date range."
+                )
+                return None
+            logging.info(
+                f"Successfully fetched {len(data)} records for {', '.join(tickers)}."
+            )
+            adj_data = (
+                data.stack(level=1, future_stack=True)
+                .rename_axis(index=["Date", "Ticker"])
+                .reset_index()
+            )
+            adj_columns = [snake_case(col) for col in adj_data.columns]
+            adj_data.columns = adj_columns
+            return adj_data
 
 
 def converting_list_of_dicts_to_dataframe(data: list[dict[str, Any]]) -> pd.DataFrame:
