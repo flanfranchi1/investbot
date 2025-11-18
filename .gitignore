@@ -214,5 +214,5 @@ __marimo__/
 
 #project specific ignores
 envlib_requirements.txt
-data/*
+src/data/*
 investbot.code-workspace
